@@ -2,9 +2,9 @@
 // billed flag and quick hand-off buttons.
 import { useMemo, useState } from 'react';
 import { Receipt, ScanLine, Microscope, Ticket, Megaphone, ClipboardList } from 'lucide-react';
-import { useColl, navigate, useNow } from '../../core/hooks';
+import { useColl, navigate, useNow, useSettings } from '../../core/hooks';
 import { dateKey, fmtTime } from '../../core/utils';
-import { setQueueStatus, QUEUE_STATUS, MODALITY_LABEL, visitOverall, waitInfo, waitTone, fmtWait, callToken, DEPT_NAME } from '../../core/clinic';
+import { setQueueStatus, QUEUE_STATUS, MODALITY_LABEL, visitOverall, waitInfo, waitTone, fmtWait, callToken, DEPT_NAME, showWaitTimes } from '../../core/clinic';
 import { can } from '../../core/auth';
 import { cx, Badge, IconBtn, Empty, Menu, toast } from '../../components/ui';
 
@@ -21,6 +21,7 @@ const WAIT_CLS = { emerald: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900
 export function QueueList({ date, compact, onPick }) {
   const queue = useTodayQueue(date);
   const now = useNow(30000);
+  const showWaits = showWaitTimes(useSettings()); // off by default: token, name and status only
   const [mod, setMod] = useState('ALL');
   const list = queue.filter((v) => mod === 'ALL' || (v.tokens && v.tokens[mod]));
   const counts = { ALL: queue.length };
@@ -63,10 +64,10 @@ export function QueueList({ date, compact, onPick }) {
                 const w = waitInfo(v, m, now);
                 const st = w.status;
                 return (
-                  <button key={m} title={'Click to advance status · ' + st + (w.live ? ' · waiting ' + fmtWait(w.minutes) : ' · waited ' + fmtWait(w.minutes))} onClick={(e) => { e.stopPropagation(); cycle(v, m); }}
+                  <button key={m} title={'Click to advance status · ' + st + (!showWaits ? '' : w.live ? ' · waiting ' + fmtWait(w.minutes) : ' · waited ' + fmtWait(w.minutes))} onClick={(e) => { e.stopPropagation(); cycle(v, m); }}
                     className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold', st === 'Completed' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : st === 'Waiting' ? 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' : 'border-brand-300 bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300')}>
                     {tok}<span className="font-medium opacity-80">· {st}</span>
-                    {w.live && <span className={cx('ml-0.5 rounded-full px-1.5 tnum', WAIT_CLS[waitTone(w.minutes)])}>{fmtWait(w.minutes)}</span>}
+                    {showWaits && w.live && <span className={cx('ml-0.5 rounded-full px-1.5 tnum', WAIT_CLS[waitTone(w.minutes)])}>{fmtWait(w.minutes)}</span>}
                   </button>
                 );
               })}

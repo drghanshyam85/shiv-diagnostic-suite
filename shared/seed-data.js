@@ -391,7 +391,11 @@ const DEFAULT_SETTINGS = {
   queue: {
     rooms: {},
     // departments the waiting-hall TV shows (its queues, calls and announcements); the staff queue shows all
-    tvDepartments: ['USG']
+    tvDepartments: ['USG'],
+    // staff screens (Dashboard, Live Queue) list token + patient name only; true brings back the waiting times
+    showWaitTimes: false,
+    // the TV's "N ahead" and estimated wait per patient
+    tvShowEstimates: true
   },
   // test packages: one tap adds every test (codes from the rate list); editable in the Tariff Directory
   packages: [

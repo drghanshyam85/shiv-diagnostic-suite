@@ -12,7 +12,7 @@ import { useAuth, can } from '../../core/auth';
 import { useNet } from '../../core/sync';
 import { dateKey, addDays, fmtDate, fmtTime, timeAgo, inr, sumBy, round2, fullName, monthLabel, ageSex } from '../../core/utils';
 import { store } from '../../core/store';
-import { MODALITY_LABEL, waitStats, waitInfo, waitTone, fmtWait } from '../../core/clinic';
+import { MODALITY_LABEL, waitStats, waitInfo, waitTone, fmtWait, showWaitTimes } from '../../core/clinic';
 import { DIGITAL_MODES, eachDay, cashbookDay } from '../../core/finance';
 import { paymentsOn, systemTotals, drawerAlert } from '../../modules/cashbook/reconcile';
 import { pendingFormFVisits } from '../../core/formf';
@@ -183,7 +183,9 @@ export function Dashboard() {
 // ---------------------------------------------------------------- live queue
 function QueueCard({ mods, total, visits }) {
   const now = useNow(30000);
-  const waits = useMemo(() => waitStats(visits, now), [visits, now]);
+  const settings = useSettings();
+  const showWaits = showWaitTimes(settings); // off by default: each line shows the token and the patient's name
+  const waits = useMemo(() => (showWaits ? waitStats(visits, now) : {}), [visits, now, showWaits]);
   const byId = useMemo(() => Object.fromEntries(visits.map((v) => [v.id, v])), [visits]);
   return (
     <Card title="Live queue" subtitle={total ? total + ' patient' + (total === 1 ? '' : 's') + ' registered today' : 'No registrations yet today'} icon={ListOrdered}
@@ -208,7 +210,7 @@ function QueueCard({ mods, total, visits }) {
                       <span className="w-14 shrink-0 font-mono text-[12px] font-bold">{n.token}</span>
                       <span className="min-w-0 flex-1 truncate">{n.name}</span>
                       {n.priority === 'Emergency' && <Badge tone="rose">STAT</Badge>}
-                      {byId[n.visitId] && (() => { const w = waitInfo(byId[n.visitId], r.m, now); return <span className={'shrink-0 text-[11.5px] font-semibold tnum ' + WAIT_TEXT[waitTone(w.minutes)]}>{fmtWait(w.minutes)}</span>; })()}
+                      {showWaits && byId[n.visitId] && (() => { const w = waitInfo(byId[n.visitId], r.m, now); return <span className={'shrink-0 text-[11.5px] font-semibold tnum ' + WAIT_TEXT[waitTone(w.minutes)]}>{fmtWait(w.minutes)}</span>; })()}
                     </div>
                   ))}
                 </div>

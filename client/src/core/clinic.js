@@ -123,6 +123,10 @@ export function setQueueStatus(visitId, modality, status) {
 export const DEPT_NAME = { USG: 'Ultrasound / Sonography', LAB: 'Pathology · Sample Collection', XRAY: 'Digital X-Ray', ECG: 'ECG', ECHO: 'Echocardiography', combined: 'Reception' };
 export const DEPT_NAME_HI = { USG: 'सोनोग्राफी', LAB: 'पैथोलॉजी · सैंपल', XRAY: 'डिजिटल एक्स-रे', ECG: 'ई.सी.जी.', ECHO: 'इको', combined: 'रिसेप्शन' };
 export const deptRoom = (m, settings = getSettings()) => ((settings.queue || {}).rooms || {})[m] || '';
+/** Waiting times on staff screens (Dashboard, Live Queue) — off unless switched on in Settings. */
+export const showWaitTimes = (settings = getSettings()) => (settings.queue || {}).showWaitTimes === true;
+/** The TV's place in line and estimated wait per patient — on unless switched off in Settings. */
+export const tvShowEstimates = (settings = getSettings()) => (settings.queue || {}).tvShowEstimates !== false;
 /** Departments shown on the waiting-hall TV — Ultrasound / Sonography unless the clinic chose others in Settings. */
 export const TV_DEPARTMENTS_DEFAULT = ['USG'];
 export function tvDepartments(settings = getSettings()) {

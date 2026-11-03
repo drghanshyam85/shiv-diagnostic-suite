@@ -9,6 +9,7 @@
 const express = require('express');
 const { checkReportLock, changedKeys } = require('../rbac/middleware/authRbac');
 
+const SERVER_ONLY_COLLECTIONS = ['sysEvents', 'sysDeliveries'];
 const SYNC_COLLECTIONS = new Set([
   'settings', 'doctors', 'tests', 'patients', 'visits', 'invoices', 'expenses', 'floats', 'denoms',
   'formf', 'reports', 'labReports', 'dictionary', 'files', 'inbox', 'dispatchLog', 'msgTemplates',
@@ -166,7 +167,8 @@ function syncRoutes(ctx, deps) {
     try {
       const since = Number(req.query.since) || 0;
       const limit = Math.min(5000, Number(req.query.limit) || 2000);
-      const out = await store.changesSince(since, limit);
+      // event log and webhook deliveries live only on the server
+      const out = await store.changesSince(since, limit, SERVER_ONLY_COLLECTIONS);
       out.changes = out.changes.map((c) => ({ coll: c.coll, doc: ctx.sanitizeForClient(c.coll, c.doc), seq: c.seq }));
       out.serverTime = Date.now();
       res.json(out);

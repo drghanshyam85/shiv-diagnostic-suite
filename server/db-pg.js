@@ -58,6 +58,7 @@ class PgStore {
     return r.map((x) => JSON.parse(x.data));
   }
   async countDocs(coll) { return Number((await this.q('SELECT COUNT(*) AS n FROM docs WHERE coll=$1 AND deleted=0', [coll]))[0].n); }
+  async purgeDocs(coll, beforeTs) { const r = await this.pool.query('DELETE FROM docs WHERE coll=$1 AND updated_at < $2', [coll, Number(beforeTs) || 0]); return Number(r.rowCount || 0); }
   async changesSince(seq, limit = 2000, exclude = []) {
     const rows = await this.q('SELECT coll, data, seq FROM docs WHERE seq > $1 ORDER BY seq ASC LIMIT $2', [Number(seq) || 0, limit + 1]);
     const page = rows.slice(0, limit);

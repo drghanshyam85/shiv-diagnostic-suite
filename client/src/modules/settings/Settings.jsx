@@ -6,10 +6,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Building2, Receipt, Printer, Bot, PlugZap, Network, HardDrive, Palette, Save, RotateCcw, Upload, Trash2, QrCode, ShieldCheck, Eye, EyeOff, Server, RefreshCw,
-  MessageCircle, Mail, Smartphone, Inbox, Cloud, Monitor, Sun, Moon, Laptop, FlaskConical, Package, Plus, Tv, CheckCheck, Copy, KeyRound, FileImage, Pencil
+  MessageCircle, Mail, Smartphone, Inbox, Cloud, Monitor, Sun, Moon, Laptop, FlaskConical, Package, Plus, Tv, CheckCheck, Copy, KeyRound, FileImage, Pencil, Workflow
 } from 'lucide-react';
 import { TestPicker } from '../../components/TestPicker';
-import { DEPT_NAME, DEFAULT_PROC_MIN, procedureMinutes, tvDepartments } from '../../core/clinic';
+import { AutomationTab } from './AutomationTab';
+import { DEPT_NAME, DEFAULT_PROC_MIN, procedureMinutes, tvDepartments, showWaitTimes, tvShowEstimates } from '../../core/clinic';
 import { useSettings, saveSettings, useRoute, navigate, getSettings, useColl } from '../../core/hooks';
 import { events } from '../../core/store';
 import { api, isServer, useNet, getWorkstationName, setWorkstationName, refreshIntegrations } from '../../core/sync';
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'print', label: 'Print & reports', icon: Printer },
   { id: 'ai', label: 'AI & Gemini', icon: Bot },
   { id: 'integrations', label: 'Integrations', icon: PlugZap },
+  { id: 'automation', label: 'Automation', icon: Workflow },
   { id: 'lan', label: 'LAN & workstation', icon: Network },
   { id: 'backup', label: 'Backup & storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette }
@@ -72,6 +74,7 @@ export function Settings() {
       {tab === 'print' && <PrintTab admin={admin} />}
       {tab === 'ai' && <AiTab admin={admin} />}
       {tab === 'integrations' && <IntegrationsTab admin={admin} />}
+      {tab === 'automation' && <AutomationTab />}
       {tab === 'lan' && <LanTab admin={admin} />}
       {tab === 'backup' && <BackupTab />}
       {tab === 'appearance' && <AppearanceTab />}
@@ -634,13 +637,15 @@ function RoomsCard({ admin }) {
   const [rooms, setRooms] = useState(() => Object.assign({}, q.rooms || {}));
   const [mins, setMins] = useState(() => Object.assign({}, q.avgMinutes || {}));
   const [tv, setTv] = useState(() => tvDepartments(settings));
+  const [staffWaits, setStaffWaits] = useState(() => showWaitTimes(settings));
+  const [tvEst, setTvEst] = useState(() => tvShowEstimates(settings));
   const measured = useMemo(() => procedureMinutes(visits, settings), [visits, settings]);
-  const dirty = JSON.stringify(rooms) !== JSON.stringify(q.rooms || {}) || JSON.stringify(mins) !== JSON.stringify(q.avgMinutes || {}) || tv.join(',') !== tvDepartments(settings).join(',');
+  const dirty = JSON.stringify(rooms) !== JSON.stringify(q.rooms || {}) || JSON.stringify(mins) !== JSON.stringify(q.avgMinutes || {}) || tv.join(',') !== tvDepartments(settings).join(',') || staffWaits !== showWaitTimes(settings) || tvEst !== tvShowEstimates(settings);
   const toggleTv = (m) => setTv((cur) => (cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : ['USG', 'LAB', 'XRAY', 'ECG', 'ECHO'].filter((x) => x === m || cur.includes(x))));
   const save = () => {
     const clean = Object.fromEntries(Object.entries(mins).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Math.min(120, Math.round(Number(v)))]));
-    saveSettings({ queue: { rooms, avgMinutes: clean, tvDepartments: tv } });
-    logAudit('settings:queue_rooms_saved', 'settings/queue', { avgMinutes: clean, tvDepartments: tv });
+    saveSettings({ queue: { rooms, avgMinutes: clean, tvDepartments: tv, showWaitTimes: staffWaits, tvShowEstimates: tvEst } });
+    logAudit('settings:queue_rooms_saved', 'settings/queue', { avgMinutes: clean, tvDepartments: tv, showWaitTimes: staffWaits, tvShowEstimates: tvEst });
     toast('Waiting hall settings saved', 'success');
   };
   return (
@@ -657,6 +662,10 @@ function RoomsCard({ admin }) {
         </div>
         <p className="mt-1.5 text-[11.5px] text-muted">Hidden departments’ queues, calls and announcements stay off the TV. The Live Queue page on staff computers still shows every department.</p>
       </fieldset>
+      <div className="mb-3 grid gap-2.5 rounded-xl border border-line p-3">
+        <Toggle checked={staffWaits} disabled={!admin} onChange={setStaffWaits} label="Show waiting times on staff screens" hint="Dashboard and Live Queue. When off, every list shows only the token and the patient’s name." />
+        <Toggle checked={tvEst} disabled={!admin} onChange={setTvEst} label="Show place in line and estimated wait on the TV" hint="“2 ahead · ≈ 30 min” beside each waiting patient on the waiting-hall display." />
+      </div>
       <div className="grid gap-3">
         {['USG', 'LAB', 'XRAY', 'ECG', 'ECHO'].map((m) => (
           <div key={m} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">

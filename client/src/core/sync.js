@@ -239,7 +239,7 @@ export async function connectRealtime() {
   socket.on('devices:update', (list) => { net.devices = list || []; bump(); });
   socket.on('locks:update', (map) => { net.locks = map || {}; bump(); });
   socket.on('cloud:status', (s) => { net.cloud = s; bump(); });
-  ['workstation:open', 'patient:registered', 'queue:updated', 'report:draft_saved', 'report:completed', 'notify', 'queue:call', 'lan:changed'].forEach((ev) => {
+  ['workstation:open', 'patient:registered', 'queue:updated', 'report:draft_saved', 'report:completed', 'notify', 'queue:call', 'lan:changed', 'automation:event'].forEach((ev) => {
     socket.on(ev, (data) => events.emit(ev, data));
   });
   window.addEventListener('hashchange', () => { if (net.connected) socket.emit('device:route', location.hash); });

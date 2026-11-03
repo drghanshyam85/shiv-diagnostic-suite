@@ -46,6 +46,8 @@ const { aiRoutes } = require('./server/routes/ai.routes');
 const { webhookRoutes } = require('./server/routes/webhooks.routes');
 const { createCloudEngine } = require('./server/services/cloud/engine');
 const { createImageInbox } = require('./server/services/imageInbox');
+const { createAutomation } = require('./server/services/automation/engine');
+const { automationRoutes } = require('./server/routes/automation.routes');
 const { imagesRoutes } = require('./server/routes/images.routes');
 const { lanAddresses } = require('./server/services/lan');
 const { getLanConfig, setLanConfig, chooseBindHost, createMdnsResponder, watchAddresses, interfaceDetails } = require('./server/services/lanStable');
@@ -102,6 +104,8 @@ async function main() {
 
   const engine = createCloudEngine(ctx, io);
   const imageInbox = createImageInbox(ctx);
+  // event-driven workflows: every saved change → domain events → automations + outgoing webhooks
+  const automation = createAutomation(ctx, { io, audit });
   const files = filesRoutes(ctx, { auth, audit });
   const pub = publicRoutes(ctx, { auth, audit, files });
 
@@ -113,6 +117,7 @@ async function main() {
   app.use('/api', dispatchRoutes(ctx, { auth, audit, files }));
   app.use('/api', cloudRoutes(ctx, { auth, audit, engine }));
   app.use('/api', imagesRoutes(ctx, { auth, audit, inbox: imageInbox }));
+  app.use('/api', automationRoutes(ctx, { auth, audit, automation }));
   app.use('/api', aiRoutes(ctx, { auth }));
   app.use('/api', webhookRoutes(ctx, { audit, io }).router);
 
@@ -166,6 +171,7 @@ async function main() {
   realtime = setupRealtime(io, ctx, { auth });
   engine.start();
   imageInbox.start();
+  automation.start().catch((e) => console.error('[automation] could not start:', e.message));
   // the server PC's address changed (DHCP): tell every workstation, re-announce the .local name
   const stopWatch = watchAddresses({
     port: PORT,

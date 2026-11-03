@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ListOrdered, Tv, Megaphone, Clock, CheckCircle2, Loader, Timer, Receipt } from 'lucide-react';
 import { useEvent, useNow, useLocalPref, useSettings, useColl } from '../../core/hooks';
 import { dateKey, fmtTime } from '../../core/utils';
-import { visitOverall, recentCalls, waitStats, waitInfo, fmtWait, waitTone, callToken, DEPT_NAME, DEPT_NAME_HI, deptRoom, procedureMinutes, roomBoard, fmtEstimate, DEFAULT_PROC_MIN, tvDepartments } from '../../core/clinic';
+import { visitOverall, recentCalls, waitStats, waitInfo, fmtWait, waitTone, callToken, DEPT_NAME, DEPT_NAME_HI, deptRoom, procedureMinutes, roomBoard, fmtEstimate, DEFAULT_PROC_MIN, tvDepartments, showWaitTimes, tvShowEstimates } from '../../core/clinic';
 import { cx, Card, Button, Input, Kpi, PageHeader, toast } from '../../components/ui';
 import { QueueList, useTodayQueue } from './QueueList';
 
@@ -38,6 +38,7 @@ const ROWS_PER_ROOM = 8;
  * into one line. If the rooms still do not fit the screen the panel turns pages every 12 seconds.
  */
 function RoomBoards({ mods, queue, proc, now, settings, showNames, emptyText = 'The queue is empty.' }) {
+  const showEst = tvShowEstimates(settings);
   const box = useRef(null);
   useEffect(() => {
     const t = setInterval(() => {
@@ -70,7 +71,7 @@ function RoomBoards({ mods, queue, proc, now, settings, showNames, emptyText = '
                 </div>
                 <div className="text-right">
                   <div className="whitespace-nowrap text-xl font-semibold text-slate-100 tnum">{b.waiting.length} waiting</div>
-                  <div className="whitespace-nowrap text-sm text-slate-400">about {avg} min per patient</div>
+                  {showEst && <div className="whitespace-nowrap text-sm text-slate-400">about {avg} min per patient</div>}
                 </div>
               </div>
               {b.inside.length > 0 && (
@@ -81,16 +82,16 @@ function RoomBoards({ mods, queue, proc, now, settings, showNames, emptyText = '
               {b.waiting.length ? (
                 <table className="tv-lineup mt-3 w-full table-fixed border-separate border-spacing-y-1.5 text-left">
                   {/* the wait column fits its longest estimate ("≈ 1 h 45 min") at the row font size */}
-                  <colgroup><col style={{ width: (Math.max(5, ...b.waiting.map((x) => String(x.token).length)) * 0.84 + 1.4).toFixed(1) + 'em' }} />{showNames && <col />}<col style={{ width: showNames ? 'calc(' + (Math.max(6, ...b.waiting.slice(0, rows).map((x) => (x.called ? 'Now' : fmtEstimate(x.estMin)).length)) * 0.62 + 1.7).toFixed(2) + ' * clamp(16px, 1.2vw, 22px))' : 'auto' }} /></colgroup>
-                  <thead><tr className="text-[13px] uppercase tracking-[0.12em] text-slate-400"><th className="px-3 font-semibold">Token</th>{showNames && <th className="px-2 font-semibold">Patient</th>}<th className="px-3 text-right font-semibold">Wait</th></tr></thead>
+                  <colgroup><col style={{ width: (Math.max(5, ...b.waiting.map((x) => String(x.token).length)) * 0.84 + 1.4).toFixed(1) + 'em' }} />{showNames && <col />}<col style={{ width: !showNames ? 'auto' : 'calc(' + (showEst ? Math.max(6, ...b.waiting.slice(0, rows).map((x) => (x.called ? 'Now' : fmtEstimate(x.estMin)).length)) * 0.62 + 1.7 : 7).toFixed(2) + ' * clamp(16px, 1.2vw, 22px))' }} /></colgroup>
+                  <thead><tr className="text-[13px] uppercase tracking-[0.12em] text-slate-400"><th className="px-3 font-semibold">Token</th>{showNames && <th className="px-2 font-semibold">Patient</th>}<th className="px-3 text-right font-semibold">{showEst ? 'Wait' : 'Status'}</th></tr></thead>
                   <tbody>
                     {b.waiting.slice(0, rows).map((x, i) => (
                       <tr key={x.token} className={cx('text-[clamp(16px,1.2vw,22px)]', x.called ? 'bg-amber-300/25' : i === 0 ? 'bg-amber-300/10' : 'bg-white/[0.07]')}>
                         <td className="whitespace-nowrap rounded-l-xl px-3 py-2 align-top font-display font-extrabold tnum">{x.token}</td>
                         {showNames && <td className="break-words px-2 py-2 align-top font-semibold leading-tight">{x.name}</td>}
                         <td className="rounded-r-xl px-3 py-1.5 text-right align-top leading-tight">
-                          <div className={cx('whitespace-nowrap font-bold tnum', x.called ? 'text-amber-200' : x.estMin >= 45 ? 'text-rose-300' : x.estMin >= 20 ? 'text-amber-200' : 'text-emerald-200')}>{x.called ? 'Now' : fmtEstimate(x.estMin)}</div>
-                          <div className="whitespace-nowrap text-[0.72em] text-slate-300 tnum">{x.called ? 'please go in' : x.ahead === 0 ? 'next in line' : x.ahead + ' ahead'}</div>
+                          {(showEst || x.called) && <div className={cx('whitespace-nowrap font-bold tnum', x.called ? 'text-amber-200' : x.estMin >= 45 ? 'text-rose-300' : x.estMin >= 20 ? 'text-amber-200' : 'text-emerald-200')}>{x.called ? 'Now' : fmtEstimate(x.estMin)}</div>}
+                          {(showEst || x.called) && <div className="whitespace-nowrap text-[0.72em] text-slate-300 tnum">{x.called ? 'please go in' : x.ahead === 0 ? 'next in line' : x.ahead + ' ahead'}</div>}
                         </td>
                       </tr>
                     ))}
@@ -212,6 +213,7 @@ export function QueuePage() {
     queue.forEach((v) => { const o = visitOverall(v); if (o === 'Waiting') s.waiting++; else if (o === 'In Scan/Sample') s.progress++; else s.done++; });
     return s;
   }, [queue]);
+  const showWaits = showWaitTimes(settings); // off by default: token and patient name only
   const waits = useMemo(() => waitStats(queue, now), [queue, now]);
   const longest = Object.entries(waits).sort((a, b) => b[1].longest - a[1].longest)[0];
   const avgAll = (() => { const r = Object.values(waits); const n = r.reduce((s, x) => s + x.waiting, 0); return n ? Math.round(r.reduce((s, x) => s + x.sum, 0) / n) : 0; })();
@@ -233,12 +235,12 @@ export function QueuePage() {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" aria-label="Queue date" />
           <Button variant="dark" icon={Tv} onClick={() => { setTv(true); try { document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* ignore */ } }}>Waiting-hall TV display</Button>
         </>} />
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className={cx('mb-4 grid grid-cols-2 gap-3 md:grid-cols-3', showWaits ? 'xl:grid-cols-6' : 'xl:grid-cols-5')}>
         <Kpi label="Registered" value={stats.total} icon={ListOrdered} />
         <Kpi label="Waiting" value={stats.waiting} icon={Clock} tone="amber" />
         <Kpi label="In scan / sample" value={stats.progress} icon={Loader} tone="brand" />
         <Kpi label="Completed" value={stats.done} icon={CheckCircle2} tone="emerald" />
-        <Kpi label="Average wait now" value={fmtWait(avgAll)} sub={longest && longest[1].longest ? 'Longest ' + fmtWait(longest[1].longest) + ' · ' + DEPT_NAME[longest[0]] : 'No one waiting'} icon={Timer} tone={waitTone(avgAll) === 'emerald' ? 'emerald' : 'amber'} />
+        {showWaits && <Kpi label="Average wait now" value={fmtWait(avgAll)} sub={longest && longest[1].longest ? 'Longest ' + fmtWait(longest[1].longest) + ' · ' + DEPT_NAME[longest[0]] : 'No one waiting'} icon={Timer} tone={waitTone(avgAll) === 'emerald' ? 'emerald' : 'amber'} />}
         <Kpi label="Billed" value={stats.billed} sub={stats.total - stats.billed + ' not billed yet'} icon={Receipt} tone="violet" />
       </div>
       {isToday && mods.length > 0 && (
@@ -249,7 +251,7 @@ export function QueuePage() {
               const w = waits[m] || {};
               return (
                 <Button key={m} variant={v ? 'primary' : 'secondary'} icon={Megaphone} disabled={!v} onClick={() => callNext(m)}>
-                  {DEPT_NAME[m]}{v ? ' · ' + v.tokens[m] : ' · nobody waiting'}{v && w.avg ? ' · avg ' + fmtWait(w.avg) : ''}
+                  {DEPT_NAME[m]}{v ? ' · ' + v.tokens[m] : ' · nobody waiting'}{showWaits && v && w.avg ? ' · avg ' + fmtWait(w.avg) : ''}
                 </Button>
               );
             })}
@@ -257,7 +259,7 @@ export function QueuePage() {
           {Object.keys((settings.queue || {}).rooms || {}).length === 0 && <p className="mt-2 text-[11.5px] text-muted">Add room names (Room 1, Sample collection…) in Settings → LAN &amp; workstation to show them on the display.</p>}
         </Card>
       )}
-      <Card title="Queue" subtitle="Click a status chip to advance it · the coloured time is how long the patient has waited" padded={false}>
+      <Card title="Queue" subtitle={'Click a status chip to advance it' + (showWaits ? ' · the coloured time is how long the patient has waited' : '')} padded={false}>
         <div className="h-[calc(100vh-330px)] min-h-[420px]"><QueueList date={date} /></div>
       </Card>
       {tv && <TvDisplay queue={todayQueue} onExit={() => { setTv(false); try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* ignore */ } }} />}

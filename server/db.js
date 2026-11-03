@@ -143,6 +143,12 @@ class SqliteStore {
     return Number(r.n);
   }
 
+  /** Permanently remove a server-only collection's documents last updated before `beforeTs`. */
+  async purgeDocs(coll, beforeTs) {
+    const r = this.a.run('DELETE FROM docs WHERE coll = ? AND updated_at < ?', coll, Number(beforeTs) || 0);
+    return Number((r && r.changes) || 0);
+  }
+
   async changesSince(seq, limit = 2000, excludeColls = []) {
     const rows = this.a.all('SELECT coll, data, seq FROM docs WHERE seq > ? ORDER BY seq ASC LIMIT ?', Number(seq) || 0, limit + 1);
     const more = rows.length > limit;
@@ -353,6 +359,12 @@ class JsonStore {
     return Object.values(this.state.docs).filter((r) => r.coll === coll && (opts.includeDeleted || !r.doc._deleted)).map((r) => r.doc);
   }
   async countDocs(coll) { return (await this.listDocs(coll)).length; }
+  async purgeDocs(coll, beforeTs) {
+    let n = 0;
+    for (const [k, r] of Object.entries(this.state.docs)) if (r.coll === coll && Number(r.doc.updatedAt || 0) < Number(beforeTs)) { delete this.state.docs[k]; n += 1; }
+    if (n) this._save();
+    return n;
+  }
   async changesSince(seq, limit = 2000, excludeColls = []) {
     const rows = Object.values(this.state.docs).filter((r) => r.seq > (Number(seq) || 0)).sort((a, b) => a.seq - b.seq);
     const page = rows.slice(0, limit);

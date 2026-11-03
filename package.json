@@ -1,0 +1,48 @@
+{
+  "name": "shiv-diagnostic-suite",
+  "version": "1.0.0",
+  "description": "Shiv Sonography and Diagnostic Center - integrated clinic suite: registration, billing, PC-PNDT Form F, USG reporting, pathology lab, tariff, cash book, doctor sharing, dispatch, RBAC, LAN server and multi-cloud backup.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "build": "node scripts/build.js",
+    "build:css": "tailwindcss -c tailwind.config.js -i client/src/styles.css -o public/assets/app.css --minify",
+    "build:standalone": "node scripts/build-standalone.js",
+    "build:all": "node scripts/build.js && node scripts/build-standalone.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.5",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "imapflow": "^1.0.171",
+    "jsonwebtoken": "^9.0.2",
+    "jsqr": "^1.4.0",
+    "mailparser": "^3.7.2",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.3.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "^5.1.1",
+    "@fontsource/noto-sans-devanagari": "^5.1.1",
+    "@fontsource/plus-jakarta-sans": "^5.1.1",
+    "esbuild": "^0.24.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.8.0",
+    "pdfjs-dist": "^3.11.174",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
+    "wordlist-english": "^1.2.1"
+  }
+}

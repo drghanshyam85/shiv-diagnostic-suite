@@ -57,6 +57,10 @@ const LEVEL_LABEL = { FULL: 'Full Access', DRAFT: 'Draft Only', READ: 'Read-Only
 // spec: true  -> from the clinic's mandated matrix; spec: false -> extra keys needed by other modules
 const PERMISSIONS = [
   { key: 'patient:register_and_edit', module: 'Patient Registration', label: 'Register & edit patient demographics', spec: true },
+  {
+    key: 'patient:delete_records', module: 'Patient Registration', label: 'Delete patient records (recycle bin, restore, permanent delete)', spec: false,
+    levels: { READ: 'view the recycle bin', DRAFT: 'move to the recycle bin & restore', FULL: 'also delete permanently' }
+  },
   { key: 'usg:create_and_edit_report', module: 'USG Reporting', label: 'Create & edit ultrasound reports', spec: true },
   { key: 'usg:sign_and_lock_report', module: 'USG Reporting', label: 'Digitally sign & lock USG reports', spec: true },
   { key: 'pcpndt:manage_form_f_register', module: 'PC-PNDT Form F', label: 'Manage Form F register', spec: true },
@@ -83,6 +87,7 @@ const row = (a, b, c, d, e) => ({
 
 const DEFAULT_MATRIX = {
   'patient:register_and_edit':            row(F, N, N, F, N),
+  'patient:delete_records':               row(F, N, N, N, N),
   'usg:create_and_edit_report':           row(F, N, N, N, N),
   'usg:sign_and_lock_report':             row(F, N, N, N, N),
   'pcpndt:manage_form_f_register':        row(F, N, N, D, N),

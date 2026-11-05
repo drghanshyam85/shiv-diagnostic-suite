@@ -39,7 +39,7 @@ export const NAV = [
   { id: 'cashbook', label: 'Daily Cash Book', short: 'Cash Book', icon: Wallet, group: 'Accounts', perm: [P('cashbook:manage_daily_register')] },
   { id: 'accounts', label: 'Accounts & Doctor Sharing', short: 'Accounts', icon: PieChart, group: 'Accounts', perm: [P('finance:doctor_sharing_and_analytics')] },
   { id: 'cloud', label: 'Cloud Sync & Backup', short: 'Cloud', icon: Cloud, group: 'System', perm: [P('settings:manage_clinic_and_integrations', 'FULL')] },
-  { id: 'admin', label: 'Admin Console', short: 'Admin', icon: ShieldCheck, group: 'System', perm: [P('admin:manage_roles_and_matrix'), P('admin:view_audit_logs')] },
+  { id: 'admin', label: 'Admin Console', short: 'Admin', icon: ShieldCheck, group: 'System', perm: [P('admin:manage_roles_and_matrix'), P('admin:view_audit_logs'), P('patient:delete_records')] },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, group: 'System' }
 ];
 export const navAllowed = (n) => !n.perm || n.perm.some(([k, l]) => can(k, l));

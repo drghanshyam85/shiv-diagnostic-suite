@@ -21,6 +21,9 @@ const EVENT_GROUPS = [
 const EVENT_TYPES = [
   { type: 'patient.registered', group: 'registration', label: 'New patient registered' },
   { type: 'patient.updated', group: 'registration', label: 'Patient details changed' },
+  { type: 'patient.deleted', group: 'registration', label: 'Patient record moved to the recycle bin (administrator)' },
+  { type: 'patient.restored', group: 'registration', label: 'Patient record restored from the recycle bin' },
+  { type: 'patient.purged', group: 'registration', label: 'Patient record deleted permanently' },
   { type: 'visit.created', group: 'registration', label: 'Visit registered, tokens issued' },
   { type: 'queue.called', group: 'registration', label: 'Token called to a room' },
   { type: 'queue.status_changed', group: 'registration', label: 'Queue status changed' },

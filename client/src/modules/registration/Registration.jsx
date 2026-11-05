@@ -2,7 +2,7 @@
 // Layout for fast keyboard entry: find / scan a returning patient first (auto-fills everything), then
 // identity → contact & family → address → referral, one Tab stop per field; * marks required fields.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { UserPlus, Save, MonitorSmartphone, Receipt, Eraser, IdCard, Baby, FlaskConical, UserRound, Pencil, Ticket, Printer, ListOrdered, Eye, EyeOff, CircleCheck, MapPin, ClipboardList, ScanLine, Search, Camera, Phone, Sparkles, History } from 'lucide-react';
+import { UserPlus, Save, MonitorSmartphone, Receipt, Eraser, IdCard, Baby, FlaskConical, UserRound, Pencil, Ticket, Printer, ListOrdered, Eye, EyeOff, CircleCheck, MapPin, ClipboardList, ScanLine, Search, Camera, Phone, Sparkles, History, X, Trash2 } from 'lucide-react';
 import { useColl, useSettings, useHotkeys, navigate, useMedia } from '../../core/hooks';
 import { store } from '../../core/store';
 import { can } from '../../core/auth';
@@ -15,6 +15,8 @@ import { TestPicker, TotalsBlock } from '../../components/TestPicker';
 import { DoctorPicker, QuickDoctors, useReferralStats, suggestDoctor } from '../../components/DoctorPicker';
 import { CameraScan, cameraScanSupported } from '../../components/CameraScan';
 import { PatientHistory } from '../../components/PatientHistory';
+import { DeletePatientDialog } from '../../components/DeletePatientDialog';
+import { canDeletePatients } from '../../core/patientRecords';
 import { searchPatients } from '../../layout/PatientSearch';
 import { SendToWorkstation } from '../../components/SendToWorkstation';
 import { ObstetricPanel, emptyObstetric } from './ObstetricPanel';
@@ -26,9 +28,19 @@ const emptyForm = () => ({
   relation: 'W/O', guardianName: '', address: '', referredBy: '', idEnabled: false, idType: 'Aadhaar Card', aadhaar: '', aadhaarLast4: '', dob: '', idVerified: false,
   obstetric: emptyObstetric(), tests: [], discountType: 'flat', discountValue: 0, discountReason: ''
 });
+const EMPTY_JSON = JSON.stringify(emptyForm());
 const GENDERS = [{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }, { value: 'Other', label: 'Other' }];
 const sameName = (a, b) => String(a || '').trim().toLowerCase().replace(/\s+/g, ' ') === String(b || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const inEditable = (el) => !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+
+/** The parts of an unsaved entry worth naming before it is thrown away. */
+function entrySummary(f) {
+  const n = f.tests.length;
+  return [
+    f.mobile && 'mobile', f.guardianName.trim() && 'husband / father name', f.address.trim() && 'address', f.email.trim() && 'email',
+    f.aadhaar && 'ID number', f.obstetric.enabled && 'pregnancy details', n && n + ' test' + (n === 1 ? '' : 's')
+  ].filter(Boolean);
+}
 
 function formFromPatient(p, visits) {
   const f = emptyForm();
@@ -79,12 +91,20 @@ export function Registration({ route }) {
   const [sendOpen, setSendOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [showAadhaar, setShowAadhaar] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
   const xl = useMedia('(min-width: 1280px)');
   const nameRef = useRef(null);
   const nameInput = useRef(null);
+  // the form as it was last loaded / saved: Cancel only asks before throwing away real changes
+  const baseRef = useRef(EMPTY_JSON);
+  // the visit already saved from this form (then edited again): Cancel keeps it and drops only the later changes
+  const savedVisitRef = useRef(null);
   const addrRef = useRef(null);
   const canEdit = can('patient:register_and_edit');
   const existing = form.patientId ? store.get('patients', form.patientId) : null;
+  // the loaded patient was deleted by an administrator (here or on another workstation)
+  const goneRaw = form.patientId && !existing ? store.getRaw('patients', form.patientId) : null;
+  const gone = !!(goneRaw && goneRaw._deleted);
   const locked = !!existing && !editDetails;
 
   /** Returning patient: fill every field from the master record, and the referring doctor from past visits. */
@@ -92,6 +112,8 @@ export function Registration({ route }) {
     const f = formFromPatient(p, visits);
     const sug = suggestDoctor(stats, { patientId: p.id, address: p.address });
     if (sug) f.referredBy = sug.id;
+    baseRef.current = JSON.stringify(f);
+    savedVisitRef.current = null;
     setForm(f); setSaved(null); setEditDetails(false); setErrors({}); setScanNote('');
     setDocHint(sug ? { id: sug.id, text: 'Auto-filled: ' + sug.reason + ' — change if this visit is different' } : null);
     toast((how || 'Returning patient loaded') + ': ' + fullName(p), 'info');
@@ -165,6 +187,8 @@ export function Registration({ route }) {
         f.tests = (v.tests || []).map((t) => Object.assign({}, t, { amount: t.rate }));
         f.referredBy = v.referredBy;
         if (v.obstetric) f.obstetric = Object.assign(emptyObstetric(), v.obstetric);
+        baseRef.current = JSON.stringify(f);
+        savedVisitRef.current = v;
         setForm(f); setSaved({ visit: v, patient: p }); setEditDetails(false);
       }
     } else if (pid) {
@@ -205,11 +229,14 @@ export function Registration({ route }) {
   const doSave = async () => {
     if (saved) return saved;
     if (!canEdit) { toast('Your role cannot register patients', 'error'); return null; }
+    if (gone) { toast('This patient record was deleted by an administrator — start a new entry', 'error'); return null; }
     if (!validate()) return null;
     setSaving(true);
     try {
       const r = await registerVisit(form, { allowEdit: !existing || editDetails });
       setSaved(r);
+      baseRef.current = JSON.stringify(Object.assign({}, form, { patientId: r.patient.id }));
+      savedVisitRef.current = r.visit;
       setForm((f) => Object.assign({}, f, { patientId: r.patient.id }));
       setEditDetails(false);
       const toks = Object.entries(r.visit.tokens).filter(([k]) => k !== 'combined').map(([, t]) => t).join(', ');
@@ -220,11 +247,50 @@ export function Registration({ route }) {
 
   const toBilling = async () => { const r = saved || (await doSave()); if (r) navigate('/billing', { visit: r.visit.id }); };
   const toWorkstation = async () => { const r = saved || (await doSave()); if (r) setSendOpen(true); };
+  const resetForm = () => {
+    const f = emptyForm();
+    baseRef.current = JSON.stringify(f);
+    savedVisitRef.current = null;
+    setForm(f); setSaved(null); setErrors({}); setEditDetails(true); setDocHint(null); setScanNote('');
+    if (route.query.patient || route.query.visit) navigate('/register');
+    setTimeout(() => { const el = document.querySelector('input[aria-label="Find or scan patient"]'); if (el) el.focus(); }, 50);
+  };
   const clear = async () => {
     if (!saved && (form.name || form.tests.length) && !(await confirmDialog({ title: 'Clear form?', message: 'Unsaved details will be lost. Continue?', confirmText: 'Clear' }))) return;
-    setForm(emptyForm()); setSaved(null); setErrors({}); setEditDetails(true); setDocHint(null); setScanNote('');
-    if (route.query.patient || route.query.visit) navigate('/register');
-    setTimeout(() => { const f = document.querySelector('input[aria-label="Find or scan patient"]'); if (f) f.focus(); }, 50);
+    resetForm();
+  };
+
+  // Cancel: throw away the entry being typed (nothing is written to the database), with Undo for a slip
+  const changed = JSON.stringify(form) !== baseRef.current;
+  const canCancel = !saved && (changed || !!form.patientId);
+  const cancelEntry = async () => {
+    if (!canCancel) return;
+    const who = form.name.trim() ? fullName(form) : '';
+    const kept = savedVisitRef.current;
+    if (changed && kept) {
+      const ok = await confirmDialog({
+        title: 'Discard the unsaved changes?', danger: true, confirmText: 'Discard changes', cancelText: 'Keep editing',
+        message: 'The registration already saved' + (kept.tokens && kept.tokens.combined ? ' (token ' + kept.tokens.combined + ')' : '') + ' is kept. Only the changes made after saving are cleared.'
+      });
+      if (!ok) return;
+    } else if (changed) {
+      const parts = entrySummary(form);
+      const ok = await confirmDialog({
+        title: existing ? 'Cancel this visit entry?' : 'Discard this new patient entry?', danger: true, confirmText: 'Discard entry', cancelText: 'Keep editing',
+        message: existing
+          ? 'Nothing has been saved for this visit. The changes typed for ' + fullName(existing) + (parts.length ? ' (' + parts.join(', ') + ')' : '') + ' will be cleared.\n\nThe patient\u2019s existing record is not changed.'
+          : 'Nothing has been saved. The details typed' + (who ? ' for ' + who : '') + (parts.length ? ' (' + parts.join(', ') + ')' : '') + ' will be cleared and no patient record is created.'
+      });
+      if (!ok) return;
+    }
+    const snap = { form, editDetails, docHint, scanNote, base: baseRef.current, kept };
+    resetForm();
+    if (changed) {
+      toast((kept ? 'Unsaved changes' : existing ? 'Visit entry for ' + fullName(existing) : who ? 'New entry for ' + who : 'New patient entry') + ' discarded', 'info', 9000, {
+        label: 'Undo',
+        onClick: () => { baseRef.current = snap.base; savedVisitRef.current = snap.kept; setForm(snap.form); setSaved(null); setEditDetails(snap.editDetails); setDocHint(snap.docHint); setScanNote(snap.scanNote); }
+      });
+    }
   };
 
   useHotkeys({ 'ctrl+s': () => { doSave(); }, 'ctrl+b': () => { toBilling(); }, 'alt+n': () => { clear(); } }, [form, saved, editDetails]);
@@ -261,9 +327,16 @@ export function Registration({ route }) {
               </div>
               <Button size="sm" icon={History} onClick={() => setHistOpen(true)}>Past records</Button>
               <Toggle checked={editDetails} onChange={setEditDetails} label="Edit Registration Details" />
+              {canDeletePatients() && <Button size="sm" variant="danger-ghost" icon={Trash2} onClick={() => setDelOpen(true)} title="Delete this patient record (administrator)">Delete record</Button>}
             </div>
           )}
 
+          {gone && (
+            <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
+              <Trash2 className="h-5 w-5" /><span className="min-w-0 flex-1">This patient record was deleted by an administrator, so this entry cannot be saved.</span>
+              <Button size="sm" onClick={resetForm}>Start a new entry</Button>
+            </div>
+          )}
           <FindPatient patients={patients} visits={visits} onPick={(p) => loadPatient(p)} onScan={handleScan} onCamera={cameraScanSupported() ? () => setCamOpen(true) : null}
             onNew={(q) => { const d = digits(q); if (d.length >= 10) set({ mobile: d.slice(-10) }); else set({ name: q.replace(/\b\w/g, (c) => c.toUpperCase()) }); setTimeout(() => nameInput.current && nameInput.current.focus(), 30); }} />
           {scanNote && <div className="flex items-start gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-[12.5px] text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"><ScanLine className="mt-0.5 h-4 w-4 shrink-0" /><span>{scanNote}</span></div>}
@@ -385,7 +458,9 @@ export function Registration({ route }) {
 
       <div className="sticky bottom-14 z-30 -mx-3 mt-4 border-t border-line bg-surface/95 px-3 py-2 backdrop-blur sm:-mx-5 sm:px-5 lg:bottom-0">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto hidden text-xs text-muted md:block">{form.tests.length} test(s) · {mods.join(', ') || 'no modality'} {saved ? '· saved' : ''}</span>
+          <span className="hidden min-w-0 flex-1 truncate text-xs text-muted md:block">{form.tests.length} test(s) · {mods.join(', ') || 'no modality'} {saved ? '· saved' : changed && !saved ? '· not saved yet' : ''}</span>
+          <Button icon={X} onClick={cancelEntry} disabled={!canCancel} className="text-rose-700 hover:border-rose-300 dark:text-rose-300"
+            title={saved ? 'Already saved — use New / Clear for the next patient' : canCancel ? 'Discard this entry without saving' : 'Nothing to discard'}>Cancel</Button>
           <Button variant="primary" icon={Save} loading={saving} onClick={doSave} disabled={!!saved}>Save & Register <span className="kbd ml-1 border-white/30 bg-white/15 text-white">Ctrl+S</span></Button>
           <Button icon={MonitorSmartphone} onClick={toWorkstation}>Save & Open in Other Workstation</Button>
           <Button variant="dark" icon={Receipt} onClick={toBilling}>Proceed to Bill Desk <span className="kbd ml-1 border-white/30 bg-white/10 text-white">Ctrl+B</span></Button>
@@ -393,7 +468,8 @@ export function Registration({ route }) {
         </div>
       </div>
       <SendToWorkstation open={sendOpen} onClose={() => setSendOpen(false)} visit={saved && saved.visit} patientName={saved ? fullName(saved.patient) : ''} />
-      <PatientHistory open={histOpen} patientId={form.patientId} onClose={() => setHistOpen(false)} />
+      <PatientHistory open={histOpen} patientId={form.patientId} onClose={() => setHistOpen(false)} onDeleted={() => resetForm()} />
+      <DeletePatientDialog open={delOpen} patientId={form.patientId} onClose={() => setDelOpen(false)} onDeleted={() => resetForm()} />
       <CameraScan open={camOpen} onClose={() => setCamOpen(false)} title="Scan patient card or Aadhaar QR" hint="Hold the token slip / patient card QR or the QR on the Aadhaar card inside the frame."
         onCode={async (code) => { setCamOpen(false); if (!(await handleScan(code))) toast('Scanned: ' + String(code).slice(0, 40) + ' — no matching patient', 'info'); }} />
       <Drawer open={queueOpen} onClose={() => setQueueOpen(false)} title="Central Live Queue" icon={ListOrdered}><div className="h-full"><QueueList /></div></Drawer>

@@ -1,11 +1,13 @@
 // A patient's past records in one place: every visit with its bill, USG report, lab report and
 // PC-PNDT Form F, each one click away. Opened from the dashboard and the registration banner.
-import { useMemo } from 'react';
-import { History, Receipt, ScanLine, Microscope, ClipboardList, UserPlus, Phone, MapPin, CalendarDays, Ticket } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { History, Receipt, ScanLine, Microscope, ClipboardList, UserPlus, Phone, MapPin, CalendarDays, Ticket, Trash2 } from 'lucide-react';
 import { useColl, navigate } from '../core/hooks';
 import { can } from '../core/auth';
 import { fullName, ageSex, guardianLine, fmtDate, fmtTime, inr } from '../core/utils';
 import { Drawer, Badge, Button, Empty } from './ui';
+import { DeletePatientDialog } from './DeletePatientDialog';
+import { canDeletePatients } from '../core/patientRecords';
 
 const REPORT_TONE = { SIGNED_FINAL: 'emerald', DRAFT: 'amber', AMENDING: 'violet', SUBMITTED: 'brand', PENDING: 'slate', SAMPLE_COLLECTED: 'cyan' };
 const statusText = (s) => ({ SIGNED_FINAL: 'Signed', DRAFT: 'Draft', AMENDING: 'Amending', SUBMITTED: 'To verify', PENDING: 'Sample due', SAMPLE_COLLECTED: 'Collected', FINAL: 'Final' }[s] || s || '');
@@ -37,15 +39,18 @@ export function usePatientHistory(patientId) {
   }, [patientId, visits, invoices, reports, labs, formf]);
 }
 
-export function PatientHistory({ patientId, open, onClose }) {
+export function PatientHistory({ patientId, open, onClose, onDeleted }) {
   const patients = useColl('patients');
   const p = patients.find((x) => x.id === patientId) || null;
   const rows = usePatientHistory(open ? patientId : null);
   const go = (path, query) => { onClose(); navigate(path, query); };
-  const perm = { bill: can('billing:create_invoice', 'READ'), usg: can('usg:create_and_edit_report', 'READ'), lab: can('lab:enter_sample_values', 'READ') || can('lab:verify_and_sign_report', 'READ'), formf: can('pcpndt:manage_form_f_register', 'READ'), reg: can('patient:register_and_edit') };
+  const perm = { bill: can('billing:create_invoice', 'READ'), usg: can('usg:create_and_edit_report', 'READ'), lab: can('lab:enter_sample_values', 'READ') || can('lab:verify_and_sign_report', 'READ'), formf: can('pcpndt:manage_form_f_register', 'READ'), reg: can('patient:register_and_edit'), del: canDeletePatients() };
+  const [delOpen, setDelOpen] = useState(false);
   return (
+    <>
     <Drawer open={open} onClose={onClose} title={p ? fullName(p) : 'Patient history'} subtitle={p ? [p.regId, ageSex(p)].filter(Boolean).join(' · ') : ''} icon={History} width="sm:w-[560px]"
       footer={p ? <div className="flex w-full flex-wrap justify-end gap-2">
+        {perm.del && <Button variant="danger-ghost" icon={Trash2} className="mr-auto" onClick={() => setDelOpen(true)}>Delete patient…</Button>}
         {perm.reg && <Button variant="primary" icon={UserPlus} onClick={() => go('/register', { patient: p.id })}>Register new visit</Button>}
         {perm.bill && <Button icon={Receipt} onClick={() => go('/billing', { patient: p.id })}>New bill</Button>}
       </div> : null}>
@@ -86,5 +91,7 @@ export function PatientHistory({ patientId, open, onClose }) {
         </div>
       )}
     </Drawer>
+    {perm.del && <DeletePatientDialog open={delOpen} patientId={p ? p.id : null} onClose={() => setDelOpen(false)} onDeleted={(r) => { onClose(); if (onDeleted) onDeleted(r); }} />}
+    </>
   );
 }

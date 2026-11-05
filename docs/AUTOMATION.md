@@ -57,6 +57,7 @@ Code: `shared/events.js` (catalogue, shared by server and browser) ·
 |---|---|---|
 | Registration & queue | `patient.registered` | a new patient record |
 | | `patient.updated` | name, mobile, address, age, gender or guardian changed |
+| | `patient.deleted`, `patient.restored`, `patient.purged` | an administrator moved the patient (with every linked record) to the recycle bin, restored it, or deleted it permanently — one event per patient; restoring does not repeat the original registration, bill or payment events |
 | | `visit.created` | a visit is registered and tokens issued |
 | | `queue.called` | a token is called to a room |
 | | `queue.status_changed` | Waiting → In Scan/Sample → Completed, per department |

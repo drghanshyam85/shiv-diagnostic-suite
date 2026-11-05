@@ -15,7 +15,18 @@ const tokensOf = (v) => Object.assign({}, (v && v.tokens) || {});
 const itemsKey = (inv) => JSON.stringify(((inv && inv.items) || []).map((x) => [x.testId || x.code || x.name, Number(x.amount !== undefined ? x.amount : x.rate) || 0]));
 
 function deriveEvents({ coll, doc, previous }) {
-  if (!doc || !doc.id || doc._deleted) return [];
+  if (!doc || !doc.id) return [];
+  // An administrator deleting a patient (recycle bin), restoring or deleting permanently: one event on the
+  // patient, nothing for the linked records — a restore is not a new registration, bill or payment.
+  const wasBinned = !!(previous && previous._deleted && previous.deleteBatch);
+  if (doc.deleteBatch || wasBinned) {
+    if (coll !== 'patients') return [];
+    const data = { patientId: doc.id, regId: (previous && previous.regId) || '', batch: doc.deleteBatch || (previous && previous.deleteBatch) || '' };
+    if (doc._deleted && doc.purged) return previous && !previous.purged ? [{ type: 'patient.purged', coll, id: doc.id, data }] : [];
+    if (doc._deleted) return !previous || !previous._deleted ? [{ type: 'patient.deleted', coll, id: doc.id, data }] : [];
+    return [{ type: 'patient.restored', coll, id: doc.id, data }];
+  }
+  if (doc._deleted) return [];
   const prev = previous && !previous._deleted ? previous : null;
   const out = [];
   const push = (type, data) => out.push({ type, coll, id: doc.id, data: data || {} });

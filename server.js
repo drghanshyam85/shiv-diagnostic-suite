@@ -49,6 +49,8 @@ const { createImageInbox } = require('./server/services/imageInbox');
 const { createAutomation } = require('./server/services/automation/engine');
 const { automationRoutes } = require('./server/routes/automation.routes');
 const { imagesRoutes } = require('./server/routes/images.routes');
+const { patientsRoutes } = require('./server/routes/patients.routes');
+const { createPatientRecords } = require('./server/services/patientRecords');
 const { lanAddresses } = require('./server/services/lan');
 const { getLanConfig, setLanConfig, chooseBindHost, createMdnsResponder, watchAddresses, interfaceDetails } = require('./server/services/lanStable');
 const { setupRealtime } = require('./server/realtime');
@@ -106,12 +108,15 @@ async function main() {
   const imageInbox = createImageInbox(ctx);
   // event-driven workflows: every saved change → domain events → automations + outgoing webhooks
   const automation = createAutomation(ctx, { io, audit });
+  // administrator deletion of patient records: recycle bin, restore, permanent delete
+  const records = createPatientRecords(ctx);
   const files = filesRoutes(ctx, { auth, audit });
   const pub = publicRoutes(ctx, { auth, audit, files });
 
   app.use('/api/auth', authRoutes(ctx, { users, audit, auth }));
   app.use('/api', adminRbacRoutes(ctx, { users, roles, audit, auth, io }));
-  app.use('/api', syncRoutes(ctx, { auth, audit, users }));
+  app.use('/api', syncRoutes(ctx, { auth, audit, users, records }));
+  app.use('/api', patientsRoutes(ctx, { auth, audit, records, io }));
   app.use('/api', files.router);
   app.use('/api', pub.api);
   app.use('/api', dispatchRoutes(ctx, { auth, audit, files }));

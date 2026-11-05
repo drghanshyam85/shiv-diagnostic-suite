@@ -313,7 +313,8 @@ export const Kbd = ({ children }) => <kbd className="kbd">{children}</kbd>;
 
 // ---------------------------------------------------------------- toasts
 let toastSeq = 0;
-export function toast(text, type = 'info', ttl) { events.emit('toast', { text, type, ttl }); }
+/** toast(text, type, ttl, action?) — action: { label, onClick } shows a button (e.g. Undo) that also closes the toast. */
+export function toast(text, type = 'info', ttl, action) { events.emit('toast', { text, type, ttl, action }); }
 export function Toaster() {
   const [items, setItems] = useState([]);
   useEffect(() => events.on('toast', (t) => {
@@ -331,7 +332,7 @@ export function Toaster() {
           <div key={t.id} className={cx('pointer-events-auto flex animate-slidein items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm shadow-pop', tone[t.type] || tone.info)}>
             <I className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="min-w-0 flex-1 break-words">{t.text}</div>
-            {t.action && <button className="text-xs font-bold underline" onClick={t.action.onClick}>{t.action.label}</button>}
+            {t.action && <button className="shrink-0 text-xs font-bold underline" onClick={() => { setItems((x) => x.filter((i) => i.id !== t.id)); t.action.onClick(); }}>{t.action.label}</button>}
             <button className="opacity-60 hover:opacity-100" onClick={() => setItems((x) => x.filter((i) => i.id !== t.id))}><X className="h-3.5 w-3.5" /></button>
           </div>
         );

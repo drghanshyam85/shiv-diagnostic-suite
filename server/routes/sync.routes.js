@@ -8,6 +8,7 @@
  */
 const express = require('express');
 const { checkReportLock, changedKeys } = require('../rbac/middleware/authRbac');
+const { LINKED_COLLS } = require('../../shared/patient-records');
 
 const SERVER_ONLY_COLLECTIONS = ['sysEvents', 'sysDeliveries'];
 const SYNC_COLLECTIONS = new Set([
@@ -22,7 +23,7 @@ const DISPATCH_KEYS = ['sent', 'sentLog', 'dispatch', 'printLog', 'printedAt', '
 function onlyKeys(changed, allowed) { return changed.every((k) => allowed.includes(k)); }
 
 function syncRoutes(ctx, deps) {
-  const { auth, audit, users } = deps;
+  const { auth, audit, users, records } = deps;
   const { store } = ctx;
   const router = express.Router();
   let testsCache = { at: 0, map: null };
@@ -41,6 +42,14 @@ function syncRoutes(ctx, deps) {
     const changed = changedKeys(existing || {}, incoming);
     const deleting = !!incoming._deleted && !(existing && existing._deleted);
 
+    // records an administrator deleted come back only through Admin Console → Patient records (restore)
+    if (existing && existing._deleted && existing.deleteBatch) {
+      return existing.purged ? 'This record was deleted permanently by an administrator' : 'This record is in the recycle bin (deleted by an administrator) — restore it from Admin Console → Patient records';
+    }
+    if (!existing && records && LINKED_COLLS.includes(coll) && incoming.patientId && !incoming._deleted && await records.isAdminDeleted(incoming.patientId)) {
+      return 'The patient record was deleted by an administrator';
+    }
+
     switch (coll) {
       case 'settings':
         return can('settings:manage_clinic_and_integrations') ? null : 'Only the administrator can change clinic settings';
@@ -57,7 +66,8 @@ function syncRoutes(ctx, deps) {
         return can('patient:register_and_edit') || can('finance:doctor_sharing_and_analytics') ? null : 'Requires patient:register_and_edit';
       }
       case 'patients': {
-        if (!can('patient:register_and_edit')) return 'Requires patient:register_and_edit';
+        if (deleting && !can('patient:delete_records', 'DRAFT')) return 'Deleting a patient record requires patient:delete_records — use Admin Console → Patient records';
+        if (!can('patient:register_and_edit') && !(deleting && can('patient:delete_records', 'DRAFT'))) return 'Requires patient:register_and_edit';
         // identity changes and deletions of a patient record are sensitive: keep who / what in the audit trail
         if (deleting) notes.push(['patient:deleted', { regId: existing && existing.regId, name: existing && existing.name }]);
         else if (existing) {

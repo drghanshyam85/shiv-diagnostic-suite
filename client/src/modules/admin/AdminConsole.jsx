@@ -4,7 +4,7 @@
 // security locks, and the live clinical audit trail with CSV export. Works against the LAN server's
 // admin API, or the local store in standalone mode.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, Grid3x3, Users, Lock, ScrollText, Save, RotateCcw, UserPlus, Pencil, KeyRound, Upload, Search, Download, RefreshCw, CircleCheck, CircleSlash, Eye, FilePenLine, Ban, Radio, Rocket, Trash2, Timer } from 'lucide-react';
+import { ShieldCheck, Grid3x3, Users, Lock, ScrollText, Save, RotateCcw, UserPlus, Pencil, KeyRound, Upload, Search, Download, RefreshCw, CircleCheck, CircleSlash, Eye, FilePenLine, Ban, Radio, Rocket, Trash2, Timer, UserX } from 'lucide-react';
 import { useColl, useSettings, saveSettings, useRoute, navigate } from '../../core/hooks';
 import { store } from '../../core/store';
 import { api, isServer } from '../../core/sync';
@@ -14,8 +14,9 @@ import { fmtDateTime, timeAgo, toCSV, download, pickFiles, readAsDataURL, uid, d
 import { idbGetAll, kvSet } from '../../core/idb';
 import perms from '../../../../shared/permissions';
 import { DEMO_COLLS, planDemoCleanup, countersAfter } from '../../../../shared/demo-cleanup';
+import { PatientRecords } from './PatientRecords';
 
-const { ROLES, ROLE_ORDER, PERMISSIONS, LEVEL_LABEL, buildDefaultRoles } = perms;
+const { ROLES, ROLE_ORDER, PERMISSIONS, LEVEL_LABEL, buildDefaultRoles, defaultRolePermissions } = perms;
 const LEVEL_UI = {
   FULL: { label: 'Full Access', short: 'Full', icon: CircleCheck, cls: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200' },
   DRAFT: { label: 'Draft Only', short: 'Draft', icon: FilePenLine, cls: 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200' },
@@ -27,6 +28,7 @@ const TABS = [
   { id: 'matrix', label: 'Permission matrix', icon: Grid3x3 },
   { id: 'staff', label: 'Staff & credentials', icon: Users },
   { id: 'compliance', label: 'Compliance & security locks', icon: Lock },
+  { id: 'patients', label: 'Patient records', icon: UserX },
   { id: 'audit', label: 'Live audit trail', icon: ScrollText }
 ];
 
@@ -34,18 +36,19 @@ export function AdminConsole() {
   const route = useRoute();
   const isAdmin = can('admin:manage_roles_and_matrix');
   const canAudit = can('admin:view_audit_logs', 'READ');
-  const tabs = TABS.filter((t) => (t.id === 'audit' ? canAudit : isAdmin || can('admin:manage_roles_and_matrix', 'READ')));
+  const tabs = TABS.filter((t) => (t.id === 'audit' ? canAudit : t.id === 'patients' ? can('patient:delete_records', 'READ') : isAdmin || can('admin:manage_roles_and_matrix', 'READ')));
   const tab = tabs.some((t) => t.id === route.query.tab) ? route.query.tab : (tabs[0] || {}).id;
   return (
     <div className="min-w-0 space-y-4">
       <div>
         <h1 className="font-display text-xl font-extrabold tracking-tight sm:text-2xl">Admin Console</h1>
-        <p className="text-[13px] text-muted">Role-based access control · staff credentials · compliance locks · clinical & security audit trail{isServer() ? ' · enforced by the clinic server' : ' · standalone mode (this computer)'}</p>
+        <p className="text-[13px] text-muted">Role-based access control · staff credentials · compliance locks · patient records & recycle bin · clinical & security audit trail{isServer() ? ' · enforced by the clinic server' : ' · standalone mode (this computer)'}</p>
       </div>
       <Tabs tabs={tabs} value={tab} onChange={(id) => navigate('/admin', { tab: id })} />
       {tab === 'matrix' && <Matrix readOnly={!isAdmin} />}
       {tab === 'staff' && <Staff readOnly={!isAdmin} />}
       {tab === 'compliance' && <Compliance readOnly={!can('settings:manage_clinic_and_integrations')} />}
+      {tab === 'patients' && <PatientRecords />}
       {tab === 'audit' && <AuditTrail />}
     </div>
   );
@@ -57,7 +60,8 @@ function Matrix({ readOnly }) {
   const base = useMemo(() => {
     const m = {};
     const defaults = buildDefaultRoles();
-    ROLE_ORDER.forEach((r) => { const d = roleDocs.find((x) => x.name === r || x.id === r) || defaults.find((x) => x.name === r); m[r] = Object.assign({}, d.permissions); });
+    // a permission added in a later version shows its default level until changed, as the server applies it
+    ROLE_ORDER.forEach((r) => { const d = roleDocs.find((x) => x.name === r || x.id === r) || defaults.find((x) => x.name === r); m[r] = Object.assign(defaultRolePermissions(r), d.permissions); });
     return m;
   }, [roleDocs]);
   const [draft, setDraft] = useState(null);
@@ -123,7 +127,7 @@ function Matrix({ readOnly }) {
               <tr key={m.name} className="bg-surface2/40"><td colSpan={ROLE_ORDER.length + 1} className="sticky left-0 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wider text-muted">{m.name}</td></tr>,
               ...m.items.map((p) => (
                 <tr key={p.key} className="border-b border-line/60">
-                  <td className="sticky left-0 z-10 bg-surface px-3 py-1.5"><div className="font-mono text-[11.5px]">{p.key}</div><div className="text-[11px] text-muted">{p.label}{!p.spec && <span className="ml-1 rounded bg-surface2 px-1 text-[10px]">suite extension</span>}</div></td>
+                  <td className="sticky left-0 z-10 bg-surface px-3 py-1.5"><div className="font-mono text-[11.5px]">{p.key}</div><div className="text-[11px] text-muted">{p.label}{!p.spec && <span className="ml-1 rounded bg-surface2 px-1 text-[10px]">suite extension</span>}</div>{p.levels && <div className="text-[10.5px] text-muted/90">{['READ', 'DRAFT', 'FULL'].map((l) => LEVEL_UI[l].short + ': ' + p.levels[l]).join(' · ')}</div>}</td>
                   {ROLE_ORDER.map((r) => {
                     const lvl = cur[r][p.key] || 'NONE';
                     const u = LEVEL_UI[lvl];

@@ -20,6 +20,13 @@ function deepMerge(base, over) {
 
 function sanitizeForClient(coll, doc) {
   if (!doc) return doc;
+  // a record an administrator deleted (recycle bin or permanent) leaves the server only as a bare tombstone:
+  // workstations, the realtime feed and the cloud mirror drop it; the full copy stays here for restore
+  if (doc._deleted && doc.deleteBatch) {
+    const t = { id: doc.id, _deleted: true, deleteBatch: doc.deleteBatch, updatedAt: doc.updatedAt };
+    if (doc.purged) t.purged = true;
+    return t;
+  }
   if (coll === 'users') {
     const { passwordHash, ...rest } = doc;
     return rest;

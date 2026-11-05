@@ -72,6 +72,9 @@ class Store {
 
   getRaw(coll, id) { return this.data[coll] ? this.data[coll].get(id) || null : null; }
 
+  /** Every document of a collection, deleted ones included (recycle bin in standalone mode). */
+  listAll(coll) { return this.data[coll] ? Array.from(this.data[coll].values()) : []; }
+
   /** Local write: stamps updatedAt/updatedBy, persists, broadcasts and queues for server sync. */
   put(coll, doc) {
     if (!this.data[coll]) throw new Error('Unknown collection ' + coll);

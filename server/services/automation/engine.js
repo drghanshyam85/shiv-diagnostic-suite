@@ -155,7 +155,8 @@ function createAutomation(ctx, { io, audit }) {
   }
 
   // ------------------------------------------------------------------ automations
-  const getVisit = (id) => (id ? ctx.store.getDoc('visits', id) : Promise.resolve(null));
+  // a visit in the recycle bin (or deleted) is left alone by every automation
+  const getVisit = async (id) => { const v = id ? await ctx.store.getDoc('visits', id) : null; return v && !v._deleted ? v : null; };
   async function saveVisit(v, patch, actor) {
     const next = bump(Object.assign({}, v, patch));
     await ctx.saveDoc('visits', next, { actor: actor || ACTOR, force: true });
@@ -272,7 +273,7 @@ function createAutomation(ctx, { io, audit }) {
     };
     if (h.includePatient && evt.data && evt.data.patientId) {
       const pt = await ctx.store.getDoc('patients', evt.data.patientId);
-      if (pt) p.patient = { id: pt.id, regId: pt.regId || '', name: [pt.title, pt.name].filter(Boolean).join(' '), mobile: pt.mobile || '', gender: pt.gender || '', age: pt.age === undefined || pt.age === '' ? '' : String(pt.age) + (pt.ageUnit && pt.ageUnit !== 'Years' ? ' ' + pt.ageUnit : '') };
+      if (pt && !pt._deleted) p.patient = { id: pt.id, regId: pt.regId || '', name: [pt.title, pt.name].filter(Boolean).join(' '), mobile: pt.mobile || '', gender: pt.gender || '', age: pt.age === undefined || pt.age === '' ? '' : String(pt.age) + (pt.ageUnit && pt.ageUnit !== 'Years' ? ' ' + pt.ageUnit : '') };
     }
     return p;
   }
@@ -467,6 +468,7 @@ function createAutomation(ctx, { io, audit }) {
       if (!status) throw httpError(400, 'status must be one of: ' + QUEUE_STATUS.join(', '));
       let m = String(d.modality || '').trim().toUpperCase();
       let v = d.visitId ? await ctx.store.getDoc('visits', String(d.visitId)) : null;
+      if (v && v._deleted) v = null;
       if (!v && d.token) {
         const settings = await ctx.getSettings();
         const tok = String(d.token).toUpperCase().replace(/\s+/g, '');

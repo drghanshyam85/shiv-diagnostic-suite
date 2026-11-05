@@ -1,7 +1,7 @@
 // Billing Desk: invoice metadata, patient, investigations & rates, discounts, multi-mode payments,
 // generate & save, auto-send, print preview, share, patient web link and dues.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Receipt, Save, Printer, Share2, Link2, Eraser, Wallet, UserRound, Pencil, FileText, RotateCcw, Trash2, Hash, CalendarClock, ListChecks, MoreHorizontal, MonitorSmartphone, Banknote, QrCode, Clock, Ticket, Siren, Building2, Zap } from 'lucide-react';
+import { Receipt, Save, Printer, Share2, Link2, Eraser, Wallet, UserRound, Pencil, FileText, RotateCcw, Trash2, Hash, CalendarClock, ListChecks, MoreHorizontal, MonitorSmartphone, Banknote, QrCode, Clock, Ticket, Siren, Building2, Zap, XCircle } from 'lucide-react';
 import { useColl, useSettings, getSettings, useHotkeys, navigate, useMedia, saveSettings, useLocalPref } from '../../core/hooks';
 import { store } from '../../core/store';
 import { can, currentUser, logAudit } from '../../core/auth';
@@ -18,6 +18,9 @@ import { PaymentPanel, paymentFromPanel } from './PaymentPanel';
 import { PrintPreview } from './PrintPreview';
 import { ShareDialog } from './ShareDialog';
 import { BillsSidebar, CollectPaymentModal, collectPayment } from './DuesLedger';
+import { CancelEntryDialog } from '../../components/CancelEntryDialog';
+import { DeletePatientDialog } from '../../components/DeletePatientDialog';
+import { canCancelEntries, canDeskDelete } from '../../core/patientRecords';
 
 const blankPatient = () => ({ title: 'Mrs.', name: '', relation: 'W/O', guardianName: '', age: '', ageUnit: 'Years', gender: 'Female', mobile: '', email: '', address: '', aadhaar: '', regId: '' });
 const blankUmid = () => ({ cardNo: '', beneficiaryName: '', employeeName: '', relation: 'Self', designation: '', unit: seed.UMID_UNITS[0], referralNo: '', referralDate: dateKey(), referringUnit: 'Railway Health Unit – Phulera', verified: false });
@@ -223,6 +226,20 @@ export function Billing({ route }) {
     setBusy(false);
   };
 
+  // Cancel entry: a saved bill (with its visit), a registered visit not billed yet, or an unsaved walk-in bill
+  const [cancelFor, setCancelFor] = useState(null);
+  const [delFor, setDelFor] = useState(null);
+  const draftHasContent = !!(draft.patient.name.trim() || draft.items.length);
+  const cancelTarget = saved ? { coll: 'invoices', id: saved.id } : draft.visitId ? { coll: 'visits', id: draft.visitId } : null;
+  const canCancelHere = cancelTarget ? canCancelEntries() : (!saved && draftHasContent);
+  const cancelHere = async () => {
+    if (cancelTarget) { setCancelFor(cancelTarget); return; }
+    if (!draftHasContent) return;
+    if (!(await confirmDialog({ title: 'Discard this bill?', message: 'Nothing has been saved. The bill being typed' + (draft.patient.name.trim() ? ' for ' + draft.patient.name.trim() : '') + ' is cleared.', danger: true, confirmText: 'Discard bill', cancelText: 'Keep editing' }))) return;
+    newBill();
+    toast('Unsaved bill discarded', 'info');
+  };
+
   const newBill = () => { setDraft(withAutoTier(blankDraft(), tests, settings)); setPay(blankPay()); setSavedId(null); setEditing(true); setErrors({}); navigate('/billing'); setTimeout(() => nameRef.current && nameRef.current.focus(), 60); };
   const refund = async () => {
     const amt = await promptDialog({ title: 'Refund / cancellation', label: 'Refund amount (₹)', defaultValue: String(saved.paid), type: 'number', required: true });
@@ -316,7 +333,8 @@ export function Billing({ route }) {
             </fieldset>
           </Card>
 
-          <Card title="Patient" icon={UserRound} subtitle={draft.patientId ? 'Linked: ' + (p.regId || '') + (draft.visitId ? ' · visit token ' + ((store.get('visits', draft.visitId) || {}).tokens || {}).combined : '') : 'New walk-in patient (registered automatically on save)'}>
+          <Card title="Patient" icon={UserRound} subtitle={draft.patientId ? 'Linked: ' + (p.regId || '') + (draft.visitId ? ' · visit token ' + ((store.get('visits', draft.visitId) || {}).tokens || {}).combined : '') : 'New walk-in patient (registered automatically on save)'}
+            actions={draft.patientId && canDeskDelete() ? <Button size="sm" variant="danger-ghost" icon={Trash2} onClick={() => setDelFor(draft.patientId)} title="Delete this patient record">Delete record</Button> : null}>
             <fieldset disabled={ro} className="grid gap-3 md:grid-cols-12">
               <Field label="Title" className="md:col-span-2"><Select value={p.title} onChange={(e) => setP({ title: e.target.value, gender: TITLE_GENDER[e.target.value] || p.gender })} options={TITLES} /></Field>
               <Field label="Patient name" required error={errors.name} className="md:col-span-4"><Input ref={nameRef} value={p.name} invalid={!!errors.name} onChange={(e) => setP({ name: e.target.value })} aria-label="Billing patient name" /></Field>
@@ -369,6 +387,8 @@ export function Billing({ route }) {
               <Toggle size="sm" checked={sendAfter} onChange={setSendAfter} label="Send receipt" />
             </span>
           )}
+          {!editing || !saved ? <Button icon={XCircle} onClick={cancelHere} disabled={!canCancelHere} className="text-rose-700 hover:border-rose-300 dark:text-rose-300"
+            title={saved ? 'Cancel this bill and its visit — the patient is not going ahead with the tests' : draft.visitId ? 'Cancel this registration — the patient is not going ahead with the tests' : canCancelHere ? 'Discard this bill without saving' : 'Nothing to cancel'}>Cancel entry</Button> : null}
           {(!saved || editing) && <Button variant="primary" size="lg" icon={Save} loading={busy} onClick={generate}>{saved ? 'Update bill' : 'Generate & Save Bill'} <span className="kbd ml-1 border-white/30 bg-white/15 text-white">Ctrl+S</span></Button>}
           {saved && editing && <Button onClick={() => { setDraft(draftFromInvoice(saved)); setEditing(false); }}>Cancel edit</Button>}
           {saved && !editing && <Button variant="primary" icon={Printer} onClick={() => setPreview(true)}>Print <span className="kbd ml-1 border-white/30 bg-white/15 text-white">Ctrl+P</span></Button>}
@@ -379,6 +399,8 @@ export function Billing({ route }) {
       {saved && <PrintPreview open={preview} onClose={closePreview} invoice={saved} webLink={link} autoPrint={autoPrint} />}
       {share && <ShareDialog open onClose={() => setShare(null)} invoice={store.get('invoices', share.invoice.id) || share.invoice} autoFire={share.autoFire} />}
       {collect && <CollectPaymentModal invoice={collect} onClose={() => setCollect(null)} />}
+      <CancelEntryDialog entry={cancelFor} onClose={() => setCancelFor(null)} onCancelled={() => newBill()} />
+      <DeletePatientDialog open={!!delFor} patientId={delFor} onClose={() => setDelFor(null)} onDeleted={() => newBill()} />
       <SendToWorkstation open={sendWs} onClose={() => setSendWs(false)} visit={saved ? store.get('visits', saved.visitId) : null} patientName={saved ? fullName(saved.patient) : ''} />
       <Drawer open={sideOpen} onClose={() => setSideOpen(false)} title="Pending dues & bills" icon={Wallet}><BillsSidebar activeId={savedId} onOpen={(i) => { setSideOpen(false); navigate('/billing', { invoice: i.id }); }} /></Drawer>
     </div>

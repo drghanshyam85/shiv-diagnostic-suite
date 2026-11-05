@@ -59,7 +59,7 @@ const PERMISSIONS = [
   { key: 'patient:register_and_edit', module: 'Patient Registration', label: 'Register & edit patient demographics', spec: true },
   {
     key: 'patient:delete_records', module: 'Patient Registration', label: 'Delete patient records (recycle bin, restore, permanent delete)', spec: false,
-    levels: { READ: 'view the recycle bin', DRAFT: 'move to the recycle bin & restore', FULL: 'also delete permanently' }
+    levels: { READ: 'view the recycle bin', DRAFT: 'delete records with history & restore', FULL: 'also delete permanently' }
   },
   { key: 'usg:create_and_edit_report', module: 'USG Reporting', label: 'Create & edit ultrasound reports', spec: true },
   { key: 'usg:sign_and_lock_report', module: 'USG Reporting', label: 'Digitally sign & lock USG reports', spec: true },

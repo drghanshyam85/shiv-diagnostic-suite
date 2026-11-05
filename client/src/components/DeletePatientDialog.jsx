@@ -64,9 +64,11 @@ export function DeletePatientDialog({ open, patientId, onClose, onDeleted }) {
 
   const p = info && info.patient;
   const plan = info && info.plan;
-  const blocked = !!(plan && plan.holds.length);
+  // access: desk (nothing done yet — a reason is enough) · admin (Reg. ID + password) · blocked (legal hold / history)
+  const access = (info && info.access) || { allowed: !!plan && !plan.holds.length, mode: 'admin', needsConfirm: true };
+  const blocked = !!(plan && (plan.holds.length || !access.allowed));
   const reasonOk = reason.trim().length >= MIN_REASON;
-  const ready = !!p && !blocked && reasonOk && confirmMatches(p, typed) && !busy;
+  const ready = !!p && !blocked && reasonOk && (!access.needsConfirm || confirmMatches(p, typed)) && !busy;
 
   const submit = async () => {
     if (!ready) return;
@@ -90,7 +92,7 @@ export function DeletePatientDialog({ open, patientId, onClose, onDeleted }) {
     <Modal open={open} onClose={busy ? undefined : onClose} title="Delete patient record" subtitle="Moves the patient and every linked record to the recycle bin" icon={Trash2}
       footer={<>
         <Button onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button variant="danger" icon={Trash2} loading={busy} disabled={!ready} onClick={submit}>Move to recycle bin</Button>
+        <Button variant="danger" icon={Trash2} loading={busy} disabled={!ready} onClick={submit}>Delete record</Button>
       </>}>
       {error ? <p className="text-sm text-rose-600">{error}</p> : !info ? <p className="text-sm text-muted">Checking the patient’s records…</p> : (
         <div className="space-y-3">
@@ -116,7 +118,15 @@ export function DeletePatientDialog({ open, patientId, onClose, onDeleted }) {
             )}
           </div>
 
-          {blocked && (
+          {!plan.holds.length && !access.allowed && (
+            <div role="alert" className="space-y-1 rounded-xl border border-rose-300 bg-rose-50 p-3 text-[12.5px] text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
+              <div className="flex items-center gap-1.5 font-bold"><ShieldAlert className="h-4 w-4" />Administrator only</div>
+              <div>{access.why || 'You may not delete this record.'}</div>
+              <div className="text-rose-800/80 dark:text-rose-200/80">If the patient is simply not going ahead with today’s tests, use <b>Cancel entry</b> instead — it removes the visit and its bill and keeps the patient’s history.</div>
+            </div>
+          )}
+
+          {plan.holds.length > 0 && (
             <div role="alert" className="space-y-1.5 rounded-xl border border-rose-300 bg-rose-50 p-3 text-[12.5px] text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
               <div className="flex items-center gap-1.5 font-bold"><ShieldAlert className="h-4 w-4" />Cannot be deleted — legal hold</div>
               {plan.holds.map((h) => (
@@ -139,7 +149,9 @@ export function DeletePatientDialog({ open, patientId, onClose, onDeleted }) {
             <>
               <div className="flex items-start gap-2 rounded-xl bg-surface2/60 p-3 text-[12px] text-muted">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>The records disappear from every screen and workstation and wait in the recycle bin (Admin Console → Patient records), where they can be restored. Deleting them permanently is a separate step. The deletion is written to the audit trail.</span>
+                <span>{access.mode === 'desk'
+                  ? 'Nothing has been done for this patient yet (no test performed, no money kept, nothing sent), so the record can be removed with a reason. '
+                  : ''}The records disappear from every screen and workstation and wait in the recycle bin (Admin Console → Patient records), where they can be restored. Deleting them permanently is a separate step. The deletion is written to the audit trail.</span>
               </div>
               <Field label="Reason for deleting" required hint={'Kept in the audit trail · at least ' + MIN_REASON + ' characters'}>
                 <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Duplicate registration of P-…" aria-label="Reason for deleting" maxLength={500} />
@@ -147,7 +159,7 @@ export function DeletePatientDialog({ open, patientId, onClose, onDeleted }) {
               <div className="-mt-1 flex flex-wrap gap-1">
                 {DELETE_REASONS.map((r) => <button key={r} type="button" className={cx('chip px-2 py-0.5 text-[11px]', reason === r && 'border-brand-400 bg-brand-50 dark:bg-brand-950/40')} onClick={() => setReason(r)}>{r}</button>)}
               </div>
-              <ConfirmBox p={p} value={typed} onChange={setTyped} onEnter={submit} />
+              {access.needsConfirm && <ConfirmBox p={p} value={typed} onChange={setTyped} onEnter={submit} />}
             </>
           )}
         </div>

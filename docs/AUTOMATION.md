@@ -62,9 +62,11 @@ Code: `shared/events.js` (catalogue, shared by server and browser) ·
 | | `queue.called` | a token is called to a room |
 | | `queue.status_changed` | Waiting → In Scan/Sample → Completed, per department |
 | | `visit.completed` | every test Completed and every bill paid (set by the automation) |
+| | `visit.cancelled`, `visit.restored` | an entry was cancelled because the patient did not go ahead with the tests (or the cancellation was undone) |
 | Billing | `invoice.created`, `invoice.updated` | a bill is saved / its amount or items change |
 | | `payment.received` | each new payment (desk, cash book, dues ledger or webhook) |
 | | `invoice.paid` | the balance reaches zero |
+| | `invoice.cancelled`, `invoice.restored` | the bill was cancelled with its entry (or restored) |
 | Clinical reporting | `report.started`, `report.signed`, `report.unlocked` | USG / X-ray / ECG / Echo reports |
 | | `formf.finalized` | PC-PNDT Form F marked final |
 | Pathology lab | `lab.sample_collected`, `lab.results_entered`, `lab.verified` | sample → technician → pathologist |

@@ -16,7 +16,8 @@ import { DoctorPicker, QuickDoctors, useReferralStats, suggestDoctor } from '../
 import { CameraScan, cameraScanSupported } from '../../components/CameraScan';
 import { PatientHistory } from '../../components/PatientHistory';
 import { DeletePatientDialog } from '../../components/DeletePatientDialog';
-import { canDeletePatients } from '../../core/patientRecords';
+import { canDeskDelete, canCancelEntries } from '../../core/patientRecords';
+import { CancelEntryDialog } from '../../components/CancelEntryDialog';
 import { searchPatients } from '../../layout/PatientSearch';
 import { SendToWorkstation } from '../../components/SendToWorkstation';
 import { ObstetricPanel, emptyObstetric } from './ObstetricPanel';
@@ -92,6 +93,7 @@ export function Registration({ route }) {
   const [queueOpen, setQueueOpen] = useState(false);
   const [showAadhaar, setShowAadhaar] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
+  const [cancelFor, setCancelFor] = useState(null);
   const xl = useMedia('(min-width: 1280px)');
   const nameRef = useRef(null);
   const nameInput = useRef(null);
@@ -262,9 +264,11 @@ export function Registration({ route }) {
 
   // Cancel: throw away the entry being typed (nothing is written to the database), with Undo for a slip
   const changed = JSON.stringify(form) !== baseRef.current;
-  const canCancel = !saved && (changed || !!form.patientId);
+  // Cancel entry: unsaved typing is discarded; a registration already saved is cancelled (visit, bill, worklists)
+  const canCancel = (!!saved && canCancelEntries()) || (!saved && (changed || !!form.patientId));
   const cancelEntry = async () => {
     if (!canCancel) return;
+    if (saved) { setCancelFor({ coll: 'visits', id: saved.visit.id }); return; }
     const who = form.name.trim() ? fullName(form) : '';
     const kept = savedVisitRef.current;
     if (changed && kept) {
@@ -327,7 +331,7 @@ export function Registration({ route }) {
               </div>
               <Button size="sm" icon={History} onClick={() => setHistOpen(true)}>Past records</Button>
               <Toggle checked={editDetails} onChange={setEditDetails} label="Edit Registration Details" />
-              {canDeletePatients() && <Button size="sm" variant="danger-ghost" icon={Trash2} onClick={() => setDelOpen(true)} title="Delete this patient record (administrator)">Delete record</Button>}
+              {canDeskDelete() && <Button size="sm" variant="danger-ghost" icon={Trash2} onClick={() => setDelOpen(true)} title="Delete this patient record">Delete record</Button>}
             </div>
           )}
 
@@ -445,6 +449,8 @@ export function Registration({ route }) {
               <Button icon={Printer} onClick={() => printTokenSlip(saved.visit, saved.patient)}>Print token slip</Button>
               {saved.visit.obstetric && can('pcpndt:manage_form_f_register', 'DRAFT') && <Button variant="primary" icon={ClipboardList} onClick={() => navigate('/formf', { visit: saved.visit.id })}>Open Form F</Button>}
               <Button icon={Ticket} onClick={() => navigate('/queue')}>View queue</Button>
+              {canCancelEntries() && <Button variant="danger-ghost" icon={X} onClick={() => setCancelFor({ coll: 'visits', id: saved.visit.id })} title="The patient is not going ahead with the tests">Cancel entry</Button>}
+              {canDeskDelete() && <Button variant="danger-ghost" icon={Trash2} onClick={() => setDelOpen(true)} title="Delete this patient record">Delete record</Button>}
             </div>
           )}
         </div>
@@ -460,7 +466,7 @@ export function Registration({ route }) {
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-end gap-2">
           <span className="hidden min-w-0 flex-1 truncate text-xs text-muted md:block">{form.tests.length} test(s) · {mods.join(', ') || 'no modality'} {saved ? '· saved' : changed && !saved ? '· not saved yet' : ''}</span>
           <Button icon={X} onClick={cancelEntry} disabled={!canCancel} className="text-rose-700 hover:border-rose-300 dark:text-rose-300"
-            title={saved ? 'Already saved — use New / Clear for the next patient' : canCancel ? 'Discard this entry without saving' : 'Nothing to discard'}>Cancel</Button>
+            title={saved ? 'Cancel this registration — the patient is not going ahead with the tests' : canCancel ? 'Discard this entry without saving' : 'Nothing to cancel'}>Cancel entry</Button>
           <Button variant="primary" icon={Save} loading={saving} onClick={doSave} disabled={!!saved}>Save & Register <span className="kbd ml-1 border-white/30 bg-white/15 text-white">Ctrl+S</span></Button>
           <Button icon={MonitorSmartphone} onClick={toWorkstation}>Save & Open in Other Workstation</Button>
           <Button variant="dark" icon={Receipt} onClick={toBilling}>Proceed to Bill Desk <span className="kbd ml-1 border-white/30 bg-white/10 text-white">Ctrl+B</span></Button>
@@ -470,6 +476,7 @@ export function Registration({ route }) {
       <SendToWorkstation open={sendOpen} onClose={() => setSendOpen(false)} visit={saved && saved.visit} patientName={saved ? fullName(saved.patient) : ''} />
       <PatientHistory open={histOpen} patientId={form.patientId} onClose={() => setHistOpen(false)} onDeleted={() => resetForm()} />
       <DeletePatientDialog open={delOpen} patientId={form.patientId} onClose={() => setDelOpen(false)} onDeleted={() => resetForm()} />
+      <CancelEntryDialog entry={cancelFor} onClose={() => setCancelFor(null)} onCancelled={() => resetForm()} />
       <CameraScan open={camOpen} onClose={() => setCamOpen(false)} title="Scan patient card or Aadhaar QR" hint="Hold the token slip / patient card QR or the QR on the Aadhaar card inside the frame."
         onCode={async (code) => { setCamOpen(false); if (!(await handleScan(code))) toast('Scanned: ' + String(code).slice(0, 40) + ' — no matching patient', 'info'); }} />
       <Drawer open={queueOpen} onClose={() => setQueueOpen(false)} title="Central Live Queue" icon={ListOrdered}><div className="h-full"><QueueList /></div></Drawer>

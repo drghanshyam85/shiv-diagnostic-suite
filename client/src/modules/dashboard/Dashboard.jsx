@@ -5,21 +5,23 @@
 import { useMemo, useState } from 'react';
 import {
   UserPlus, Receipt, ListOrdered, ScanLine, Microscope, ClipboardList, Users, Banknote, QrCode, IndianRupee, FileSignature, FlaskConical, Send,
-  AlertTriangle, ChevronRight, Server, Cloud, MessageCircle, Mail, Smartphone, Wifi, WifiOff, RefreshCw, TestTube2, CircleDollarSign, Stethoscope, Coins, MailWarning, History
+  AlertTriangle, ChevronRight, Server, Cloud, MessageCircle, Mail, Smartphone, Wifi, WifiOff, RefreshCw, TestTube2, CircleDollarSign, Stethoscope, Coins, MailWarning, XCircle
 } from 'lucide-react';
 import { useColl, useNow, useSettings, navigate } from '../../core/hooks';
 import { useAuth, can } from '../../core/auth';
 import { useNet } from '../../core/sync';
-import { dateKey, addDays, fmtDate, fmtTime, timeAgo, inr, sumBy, round2, fullName, monthLabel, ageSex } from '../../core/utils';
+import { dateKey, addDays, fmtDate, fmtTime, timeAgo, inr, sumBy, round2, fullName, monthLabel } from '../../core/utils';
 import { store } from '../../core/store';
 import { MODALITY_LABEL, waitStats, waitInfo, waitTone, fmtWait, showWaitTimes } from '../../core/clinic';
 import { DIGITAL_MODES, eachDay, cashbookDay } from '../../core/finance';
 import { paymentsOn, systemTotals, drawerAlert } from '../../modules/cashbook/reconcile';
 import { pendingFormFVisits } from '../../core/formf';
 import { unsentToday, openSend, failedChannels, CH_LABEL } from '../../modules/dispatch/engine';
-import { Card, Button, Badge, Kpi, Segmented, Empty } from '../../components/ui';
+import { Card, Button, Badge, Kpi, IconBtn, Segmented, Empty } from '../../components/ui';
 import { ChartFrame, ColumnChart, DataTable, compactInr } from '../../components/charts';
-import { PatientHistory } from '../../components/PatientHistory';
+import { PatientsCard } from './PatientsCard';
+import { CancelEntryDialog } from '../../components/CancelEntryDialog';
+import { canCancelEntries } from '../../core/patientRecords';
 
 const MOD_ORDER = ['USG', 'LAB', 'XRAY', 'ECG', 'ECHO'];
 const WAIT_TEXT = { emerald: 'text-emerald-700 dark:text-emerald-300', amber: 'text-amber-700 dark:text-amber-300', rose: 'text-rose-600 dark:text-rose-400' };
@@ -166,8 +168,8 @@ export function Dashboard() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
+          <PatientsCard today={today} now={now} visits={visits} invoices={invoices} reports={reports} labs={labs} dispatchLog={dispatchLog} />
           <QueueCard mods={day.mods} total={day.visits.length} visits={day.visits} />
-          <RecentPatients today={today} visits={visits} invoices={invoices} reports={reports} labs={labs} />
           <TrendCard visits={visits} invoices={invoices} now={now} money={perm.money} />
           {perm.bill && <RecentBills bills={day.recentBills} />}
         </div>
@@ -252,79 +254,16 @@ function TrendCard({ visits, invoices, now, money }) {
 }
 
 // ---------------------------------------------------------------- recent bills
-// ---------------------------------------------------------------- recent & returning patients
-const PT_VIEWS = [{ value: 'today', label: 'Today' }, { value: 'returning', label: 'Returning' }, { value: 'recent', label: 'All recent' }];
-
-function RecentPatients({ today, visits, invoices, reports, labs }) {
-  const patients = useColl('patients');
-  const [view, setView] = useState('today');
-  const [hist, setHist] = useState(null);
-  const latest = useMemo(() => {
-    const pick = (list, key, at) => { const m = {}; list.forEach((x) => { const k = x[key]; if (!k) return; if (!m[k] || (x[at] || 0) > (m[k][at] || 0)) m[k] = x; }); return m; };
-    return { inv: pick(invoices, 'patientId', 'date'), rep: pick(reports.filter((r) => !r._deleted), 'patientId', 'createdAt'), lab: pick(labs, 'patientId', 'createdAt'), visit: pick(visits, 'patientId', 'createdAt') };
-  }, [invoices, reports, labs, visits]);
-  const rows = useMemo(() => {
-    const byId = Object.fromEntries(patients.map((p) => [p.id, p]));
-    if (view === 'today') {
-      const seen = new Set();
-      return visits.filter((v) => v.dateKey === today).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .filter((v) => { if (seen.has(v.patientId)) return false; seen.add(v.patientId); return true; })
-        .map((v) => ({ p: byId[v.patientId], v })).filter((r) => r.p).slice(0, 12);
-    }
-    const since = Date.now() - (view === 'returning' ? 60 : 30) * 86400000;
-    return patients.filter((p) => (p.lastVisitAt || 0) >= since && (view !== 'returning' || (p.visitCount || 0) >= 2))
-      .sort((a, b) => (b.lastVisitAt || 0) - (a.lastVisitAt || 0)).slice(0, 12).map((p) => ({ p, v: latest.visit[p.id] }));
-  }, [view, visits, patients, today, latest]);
-  const perm = { bill: can('billing:create_invoice', 'READ'), usg: can('usg:create_and_edit_report', 'READ'), lab: can('lab:enter_sample_values', 'READ') || can('lab:verify_and_sign_report', 'READ'), reg: can('patient:register_and_edit') };
-  const returningToday = useMemo(() => {
-    const byId = Object.fromEntries(patients.map((p) => [p.id, p]));
-    return new Set(visits.filter((v) => v.dateKey === today && byId[v.patientId] && (byId[v.patientId].visitCount || 0) >= 2).map((v) => v.patientId)).size;
-  }, [visits, patients, today]);
-  return (
-    <Card title="Recent & returning patients" icon={History} padded={false}
-      subtitle={view === 'today' ? returningToday + ' returning today · click a patient for the full history' : view === 'returning' ? 'Seen before and back within 60 days' : 'Last 30 days'}
-      actions={<Segmented size="sm" value={view} onChange={setView} options={PT_VIEWS} ariaLabel="Patient list" />}>
-      {!rows.length ? <div className="p-4"><Empty icon={Users} title={view === 'today' ? 'No registrations yet today' : 'No patients in this view'} /></div> : (
-        <ul className="divide-y divide-line">
-          {rows.map(({ p, v }) => {
-            const n = p.visitCount || 0;
-            const inv = latest.inv[p.id];
-            const rep = latest.rep[p.id];
-            const lab = latest.lab[p.id];
-            return (
-              <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 hover:bg-surface2/50">
-                <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setHist(p.id)} title="Open past records">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[12px] font-bold text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">{String(p.name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</span>
-                  <span className="min-w-0">
-                    <span className="flex flex-wrap items-center gap-1.5"><span className="truncate text-[13px] font-semibold">{fullName(p)}</span>{n >= 2 ? <Badge tone="violet">Returning · {n} visits</Badge> : <Badge tone="emerald">New</Badge>}</span>
-                    <span className="block truncate text-[11.5px] text-muted">{[p.regId, ageSex(p), p.mobile].filter(Boolean).join(' · ')}{v ? ' · ' + (v.dateKey === today ? fmtTime(v.createdAt) : fmtDate(v.createdAt)) + ' · ' + (v.tests || []).map((t) => t.name).join(', ') : ''}</span>
-                  </span>
-                </button>
-                <span className="flex shrink-0 flex-wrap items-center gap-1">
-                  {inv && perm.bill && <Button size="xs" variant="ghost" icon={Receipt} title={'Bill ' + inv.invoiceNo} onClick={() => navigate('/billing', { invoice: inv.id })}>Bill</Button>}
-                  {rep && perm.usg && <Button size="xs" variant="ghost" icon={ScanLine} title="Latest USG report" onClick={() => navigate('/report', { id: rep.id })}>USG</Button>}
-                  {lab && perm.lab && <Button size="xs" variant="ghost" icon={Microscope} title="Latest lab report" onClick={() => navigate('/lab', { id: lab.id })}>Lab</Button>}
-                  <Button size="xs" icon={History} onClick={() => setHist(p.id)}>History</Button>
-                  {perm.reg && v && v.dateKey !== today && <Button size="xs" variant="ghost" icon={UserPlus} title="Register a new visit" onClick={() => navigate('/register', { patient: p.id })}>Visit</Button>}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <PatientHistory open={!!hist} patientId={hist} onClose={() => setHist(null)} />
-    </Card>
-  );
-}
-
 function RecentBills({ bills }) {
+  const [cancelFor, setCancelFor] = useState(null);
+  const mayCancel = canCancelEntries();
   return (
     <Card title="Today’s latest bills" icon={Receipt} padded={false}
       actions={<Button size="sm" variant="ghost" iconRight={ChevronRight} onClick={() => navigate('/billing')}>Billing desk</Button>}>
       {!bills.length ? <div className="p-4"><Empty icon={Receipt} title="No bills yet today" text="Bills generated at any counter appear here." /></div> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-[12.5px]">
-            <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted"><th className="px-4 py-2 font-semibold">Bill</th><th className="px-2 py-2 font-semibold">Patient</th><th className="px-2 py-2 font-semibold">Tests</th><th className="px-2 py-2 text-right font-semibold">Net</th><th className="px-4 py-2 text-right font-semibold">Status</th></tr></thead>
+            <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted"><th className="px-4 py-2 font-semibold">Bill</th><th className="px-2 py-2 font-semibold">Patient</th><th className="px-2 py-2 font-semibold">Tests</th><th className="px-2 py-2 text-right font-semibold">Net</th><th className="px-4 py-2 text-right font-semibold">Status</th>{mayCancel && <th className="w-10 px-2 py-2"><span className="sr-only">Cancel entry</span></th>}</tr></thead>
             <tbody>
               {bills.map((b) => (
                 <tr key={b.id} className="cursor-pointer border-t border-line/70 hover:bg-surface2" onClick={() => navigate('/billing', { invoice: b.id })}>
@@ -333,12 +272,14 @@ function RecentBills({ bills }) {
                   <td className="max-w-[220px] truncate px-2 py-2 text-muted">{(b.items || []).map((x) => x.name).join(', ')}</td>
                   <td className="px-2 py-2 text-right tnum">{inr(b.net)}</td>
                   <td className="px-4 py-2 text-right"><Badge tone={STATUS_TONE[b.status] || 'slate'}>{b.status === 'PARTIAL' ? 'Due ' + inr(b.balance) : b.status}</Badge></td>
+                  {mayCancel && <td className="px-2 py-1 text-right" onClick={(e) => e.stopPropagation()}><IconBtn icon={XCircle} size="sm" tone="danger" title={'Cancel entry — bill ' + b.invoiceNo} onClick={() => setCancelFor({ coll: 'invoices', id: b.id })} /></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <CancelEntryDialog entry={cancelFor} onClose={() => setCancelFor(null)} />
     </Card>
   );
 }

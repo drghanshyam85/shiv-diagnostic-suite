@@ -44,10 +44,15 @@ function syncRoutes(ctx, deps) {
 
     // records an administrator deleted come back only through Admin Console → Patient records (restore)
     if (existing && existing._deleted && existing.deleteBatch) {
-      return existing.purged ? 'This record was deleted permanently by an administrator' : 'This record is in the recycle bin (deleted by an administrator) — restore it from Admin Console → Patient records';
+      if (existing.purged) return 'This record was deleted permanently';
+      return existing.deleteKind === 'entry' ? 'This entry was cancelled — it can be restored from the recycle bin' : 'This record is in the recycle bin — restore it from Admin Console → Patient records';
     }
     if (!existing && records && LINKED_COLLS.includes(coll) && incoming.patientId && !incoming._deleted && await records.isAdminDeleted(incoming.patientId)) {
-      return 'The patient record was deleted by an administrator';
+      return 'The patient record was deleted';
+    }
+    // nothing new can be attached to a cancelled visit (a bill or report made on a workstation that was offline)
+    if (!existing && records && coll !== 'visits' && LINKED_COLLS.includes(coll) && incoming.visitId && !incoming._deleted && await records.isBatchDeleted('visits', incoming.visitId)) {
+      return 'This visit was cancelled';
     }
 
     switch (coll) {

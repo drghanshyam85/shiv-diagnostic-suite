@@ -20,8 +20,21 @@ function deriveEvents({ coll, doc, previous }) {
   // patient, nothing for the linked records — a restore is not a new registration, bill or payment.
   const wasBinned = !!(previous && previous._deleted && previous.deleteBatch);
   if (doc.deleteBatch || wasBinned) {
+    const batch = doc.deleteBatch || (previous && previous.deleteBatch) || '';
+    const kind = doc.deleteKind || (previous && previous.deleteKind) || 'patient';
+    // a cancelled entry (the patient did not go ahead): one event per visit and per bill
+    if (kind === 'entry' && (coll === 'visits' || coll === 'invoices')) {
+      const src = doc._deleted ? previous : doc;
+      if (!src || doc.purged) return [];
+      const name = coll === 'visits' ? 'visit' : 'invoice';
+      const data = coll === 'visits'
+        ? { visitId: src.id, patientId: src.patientId || '', dateKey: src.dateKey || '', tokens: tokensOf(src), batch }
+        : { invoiceId: src.id, invoiceNo: src.invoiceNo || '', visitId: src.visitId || '', patientId: src.patientId || '', net: Number(src.net) || 0, paid: Number(src.paid) || 0, batch };
+      if (doc._deleted) return previous && !previous._deleted ? [{ type: name + '.cancelled', coll, id: doc.id, data }] : [];
+      return [{ type: name + '.restored', coll, id: doc.id, data }];
+    }
     if (coll !== 'patients') return [];
-    const data = { patientId: doc.id, regId: (previous && previous.regId) || '', batch: doc.deleteBatch || (previous && previous.deleteBatch) || '' };
+    const data = { patientId: doc.id, regId: (previous && previous.regId) || '', batch };
     if (doc._deleted && doc.purged) return previous && !previous.purged ? [{ type: 'patient.purged', coll, id: doc.id, data }] : [];
     if (doc._deleted) return !previous || !previous._deleted ? [{ type: 'patient.deleted', coll, id: doc.id, data }] : [];
     return [{ type: 'patient.restored', coll, id: doc.id, data }];

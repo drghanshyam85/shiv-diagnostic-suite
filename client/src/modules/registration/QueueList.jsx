@@ -1,12 +1,14 @@
 // Central live queue: today's tokens with per-modality status (Waiting → In Scan/Sample → Completed),
 // billed flag and quick hand-off buttons.
 import { useMemo, useState } from 'react';
-import { Receipt, ScanLine, Microscope, Ticket, Megaphone, ClipboardList } from 'lucide-react';
+import { Receipt, ScanLine, Microscope, Ticket, Megaphone, ClipboardList, XCircle } from 'lucide-react';
 import { useColl, navigate, useNow, useSettings } from '../../core/hooks';
 import { dateKey, fmtTime } from '../../core/utils';
 import { setQueueStatus, QUEUE_STATUS, MODALITY_LABEL, visitOverall, waitInfo, waitTone, fmtWait, callToken, DEPT_NAME, showWaitTimes } from '../../core/clinic';
 import { can } from '../../core/auth';
 import { cx, Badge, IconBtn, Empty, Menu, toast } from '../../components/ui';
+import { CancelEntryDialog } from '../../components/CancelEntryDialog';
+import { canCancelEntries, paidVisitIds, canRefund, REFUND_HINT } from '../../core/patientRecords';
 
 const ST_TONE = { Waiting: 'amber', 'In Scan/Sample': 'brand', Completed: 'emerald', Billed: 'violet' };
 const MODS = ['ALL', 'USG', 'LAB', 'XRAY', 'ECG', 'ECHO'];
@@ -23,6 +25,10 @@ export function QueueList({ date, compact, onPick }) {
   const now = useNow(30000);
   const showWaits = showWaitTimes(useSettings()); // off by default: token, name and status only
   const [mod, setMod] = useState('ALL');
+  const [cancelFor, setCancelFor] = useState(null);
+  const mayCancel = canCancelEntries();
+  const invoices = useColl('invoices');
+  const paid = useMemo(() => (mayCancel && !canRefund() ? paidVisitIds(invoices) : new Set()), [invoices, mayCancel]);
   const list = queue.filter((v) => mod === 'ALL' || (v.tokens && v.tokens[mod]));
   const counts = { ALL: queue.length };
   queue.forEach((v) => Object.keys(v.tokens || {}).forEach((k) => { if (k !== 'combined') counts[k] = (counts[k] || 0) + 1; }));
@@ -80,11 +86,13 @@ export function QueueList({ date, compact, onPick }) {
                 {v.tokens && v.tokens.USG && can('usg:create_and_edit_report', 'READ') && <IconBtn icon={ScanLine} size="sm" title="Open USG report" onClick={(e) => { e.stopPropagation(); navigate('/report', { visit: v.id }); }} />}
                 {v.obstetric && can('pcpndt:manage_form_f_register', 'DRAFT') && <IconBtn icon={ClipboardList} size="sm" title="PC-PNDT Form F" onClick={(e) => { e.stopPropagation(); navigate('/formf', { visit: v.id }); }} />}
                 {v.tokens && v.tokens.LAB && (can('lab:enter_sample_values', 'DRAFT') || can('lab:verify_and_sign_report', 'READ')) && <IconBtn icon={Microscope} size="sm" title="Open in Lab" onClick={(e) => { e.stopPropagation(); navigate('/lab', { visit: v.id }); }} />}
+                {mayCancel && !Object.values(v.status || {}).includes('Completed') && <IconBtn icon={XCircle} size="sm" tone="danger" disabled={paid.has(v.id)} title={paid.has(v.id) ? REFUND_HINT : 'Cancel entry ' + ((v.tokens && v.tokens.combined) || '') + ' — the patient is not going ahead with the tests'} onClick={(e) => { e.stopPropagation(); setCancelFor({ coll: 'visits', id: v.id }); }} />}
               </span>
             </div>
           </div>
         ))}
       </div>
+      <CancelEntryDialog entry={cancelFor} onClose={() => setCancelFor(null)} />
     </div>
   );
 }

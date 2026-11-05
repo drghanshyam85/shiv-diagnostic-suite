@@ -1,13 +1,14 @@
 // A patient's past records in one place: every visit with its bill, USG report, lab report and
 // PC-PNDT Form F, each one click away. Opened from the dashboard and the registration banner.
 import { useMemo, useState } from 'react';
-import { History, Receipt, ScanLine, Microscope, ClipboardList, UserPlus, Phone, MapPin, CalendarDays, Ticket, Trash2 } from 'lucide-react';
+import { History, Receipt, ScanLine, Microscope, ClipboardList, UserPlus, Phone, MapPin, CalendarDays, Ticket, Trash2, XCircle } from 'lucide-react';
 import { useColl, navigate } from '../core/hooks';
 import { can } from '../core/auth';
 import { fullName, ageSex, guardianLine, fmtDate, fmtTime, inr } from '../core/utils';
 import { Drawer, Badge, Button, Empty } from './ui';
 import { DeletePatientDialog } from './DeletePatientDialog';
-import { canDeletePatients } from '../core/patientRecords';
+import { CancelEntryDialog } from './CancelEntryDialog';
+import { canDeskDelete, canCancelEntries } from '../core/patientRecords';
 
 const REPORT_TONE = { SIGNED_FINAL: 'emerald', DRAFT: 'amber', AMENDING: 'violet', SUBMITTED: 'brand', PENDING: 'slate', SAMPLE_COLLECTED: 'cyan' };
 const statusText = (s) => ({ SIGNED_FINAL: 'Signed', DRAFT: 'Draft', AMENDING: 'Amending', SUBMITTED: 'To verify', PENDING: 'Sample due', SAMPLE_COLLECTED: 'Collected', FINAL: 'Final' }[s] || s || '');
@@ -44,8 +45,10 @@ export function PatientHistory({ patientId, open, onClose, onDeleted }) {
   const p = patients.find((x) => x.id === patientId) || null;
   const rows = usePatientHistory(open ? patientId : null);
   const go = (path, query) => { onClose(); navigate(path, query); };
-  const perm = { bill: can('billing:create_invoice', 'READ'), usg: can('usg:create_and_edit_report', 'READ'), lab: can('lab:enter_sample_values', 'READ') || can('lab:verify_and_sign_report', 'READ'), formf: can('pcpndt:manage_form_f_register', 'READ'), reg: can('patient:register_and_edit'), del: canDeletePatients() };
+  const perm = { bill: can('billing:create_invoice', 'READ'), usg: can('usg:create_and_edit_report', 'READ'), lab: can('lab:enter_sample_values', 'READ') || can('lab:verify_and_sign_report', 'READ'), formf: can('pcpndt:manage_form_f_register', 'READ'), reg: can('patient:register_and_edit'), del: canDeskDelete(), cancel: canCancelEntries() };
   const [delOpen, setDelOpen] = useState(false);
+  const [cancelFor, setCancelFor] = useState(null);
+  const weekAgo = Date.now() - 7 * 86400000;
   return (
     <>
     <Drawer open={open} onClose={onClose} title={p ? fullName(p) : 'Patient history'} subtitle={p ? [p.regId, ageSex(p)].filter(Boolean).join(' · ') : ''} icon={History} width="sm:w-[560px]"
@@ -83,6 +86,9 @@ export function PatientHistory({ patientId, open, onClose, onDeleted }) {
                     {r.lab && perm.lab && <Button size="xs" icon={Microscope} onClick={() => go('/lab', { id: r.lab.id })}>Lab report <Badge tone={REPORT_TONE[r.lab.status] || 'slate'}>{statusText(r.lab.status)}</Badge></Button>}
                     {r.ff && perm.formf && <Button size="xs" icon={ClipboardList} onClick={() => go('/formf', { id: r.ff.id })}>Form F {r.ff.sno ? '#' + r.ff.sno : ''} <Badge tone={r.ff.status === 'FINAL' ? 'emerald' : 'amber'}>{statusText(r.ff.status) || 'Draft'}</Badge></Button>}
                     {v && !r.inv && perm.bill && <Button size="xs" variant="ghost" icon={Receipt} onClick={() => go('/billing', { visit: v.id })}>Make bill</Button>}
+                    {perm.cancel && (v ? (v.createdAt || 0) >= weekAgo && !v.closedAt && !Object.values(v.status || {}).includes('Completed') : r.inv && (r.inv.date || 0) >= weekAgo) && (
+                      <Button size="xs" variant="danger-ghost" icon={XCircle} title="The patient is not going ahead with the tests" onClick={() => setCancelFor(v ? { coll: 'visits', id: v.id } : { coll: 'invoices', id: r.inv.id })}>Cancel entry</Button>
+                    )}
                   </div>
                 </li>
               );
@@ -92,6 +98,7 @@ export function PatientHistory({ patientId, open, onClose, onDeleted }) {
       )}
     </Drawer>
     {perm.del && <DeletePatientDialog open={delOpen} patientId={p ? p.id : null} onClose={() => setDelOpen(false)} onDeleted={(r) => { onClose(); if (onDeleted) onDeleted(r); }} />}
+    {perm.cancel && <CancelEntryDialog entry={cancelFor} onClose={() => setCancelFor(null)} />}
     </>
   );
 }
